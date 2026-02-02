@@ -1,0 +1,42 @@
+{
+  "run_id": "2026-01-14T10-40-06Z",
+  "started_at": "2026-01-14T10:40:06Z",
+  "host": "Julia",
+  "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+  "zmap_version": "zmap 2.1.1",
+  "cidr_file": "data/norway_ipv4_cidrs.txt",
+  "cidrs_loaded": 1757,
+  "total_targets_all": 16650640,
+  "targets_per_port_effective": 16650640,
+  "ports": [
+    80,
+    443
+  ],
+  "bandwidth": "10M",
+  "rate": 0,
+  "seed": 0,
+  "iface": "",
+  "gateway_mac": "",
+  "blacklist": "/etc/zmap/blacklist.conf",
+  "open_only": false,
+  "commands": {
+    "80": "/usr/sbin/zmap -M tcp_synscan -p 80 -w data/norway_ipv4_cidrs.txt -O csv --output-fields=saddr,success,ttl -b /etc/zmap/blacklist.conf -o data/scans/2026-01-14T10-40-06Z/port_80/zmap.csv --output-filter=repeat=0 -B 10M",
+    "443": "/usr/sbin/zmap -M tcp_synscan -p 443 -w data/norway_ipv4_cidrs.txt -O csv --output-fields=saddr,success,ttl -b /etc/zmap/blacklist.conf -o data/scans/2026-01-14T10-40-06Z/port_443/zmap.csv --output-filter=repeat=0 -B 10M"
+  },
+  "results": {
+    "80": {
+      "open_unique": 15369,
+      "closed_unique": 35011,
+      "no_response": 16600260,
+      "output_lines": 50380
+    },
+    "443": {
+      "open_unique": 15970,
+      "closed_unique": 32537,
+      "no_response": 16602133,
+      "output_lines": 48507
+    }
+  },
+  "finished_at": "2026-01-14T11:27:39Z",
+  "total_runtime_seconds": 2852.809
+}

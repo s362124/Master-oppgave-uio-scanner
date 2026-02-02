@@ -1,0 +1,18 @@
+{
+  // Save as .vscode/tasks.json in your project folder
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run: fetch_norway_ip_ranges.py",
+      "type": "shell",
+      "command": "${config:python.pythonPath}",
+      "args": [
+        "fetch_norway_ip_ranges.py"
+      ],
+      "options": { "env": {} },
+      "presentation": { "reveal": "always" },
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": []
+    }
+  ]
+}

@@ -1,0 +1,745 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+One-file toolkit for:
+  1) Fetching/merging Norwegian IPv4 CIDR ranges (robust, no hardcoding)
+  2) Running ZMap scans against those ranges with progress metadata
+
+Why this version should fix your "no results" issue:
+- Auto-detects network interface (Linux/macOS) or lets you pass --iface explicitly
+- Verifies root/CAP_NET_RAW and zmap availability up-front with human-friendly errors
+- Generates a *pure* whitelist file (no banner/comments) so ZMap parses it cleanly
+- Chooses compatible CSV output fields by probing your ZMap's supported fields
+- Writes a JSON status file from ZMap (so you can see progress) and a clear summary.txt
+
+Usage (examples):
+  # 1) Fetch ranges (RIPE is the source of truth; IP2Location optional)
+  python3 norway_net_suite.py fetch --out-dir data --sources ripe
+  
+  # 2) Quick sanity scan (GLOBAL mode, 10k IPs total per port, 80+443)
+  sudo -E python3 norway_net_suite.py scan \
+    --whitelist data/norway_ipv4_whitelist.txt \
+    --ports 80,443 \
+    --global-max-ips 10000 \
+    --bandwidth 5M \
+    --seed 42 \
+    --output-all
+
+  # 3) Per-CIDR mode with per-CIDR cap (-n)
+  sudo -E python3 norway_net_suite.py scan \
+    --whitelist data/norway_ipv4_whitelist.txt \
+    --ports 80,443 \
+    --n-per-cidr 500 \
+    --bandwidth 5M \
+    --seed 42
+
+Ethics/legal: Only scan assets you have *explicit authorization* to test. Adjust scope to your course/lab requirements.
+"""
+
+import argparse
+import csv
+import json
+import os
+import platform
+import re
+import shutil
+import socket
+import subprocess
+import sys
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Iterable, List, Optional, Tuple
+
+import ipaddress
+
+try:
+    import requests
+    from bs4 import BeautifulSoup  # only used if --sources includes ip2location
+except Exception:
+    requests = None
+    BeautifulSoup = None
+
+# -------------------------------
+# Constants / defaults
+# -------------------------------
+OUT_DIR_DEFAULT = Path("data")
+WHITELIST_TXT = "norway_ipv4_whitelist.txt"       # pure, no comments
+CIDRS_JSON = "norway_ipv4_cidrs.json"
+SOURCES_JSON = "norway_ipv4_sources.json"
+SCANS_ROOT = Path("data/scans")
+
+RIPE_DELEGATED_URL = "https://ftp.ripe.net/pub/stats/ripencc/delegated-ripencc-latest"
+IP2LOCATION_URL = "https://lite.ip2location.com/norway-ip-address-ranges?lang=en_US"
+
+HEADERS = {
+    "User-Agent": "UiO-SecurityLab-Robot/0.2 (+contact: your_email@uio.no)",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Connection": "close",
+    "From": "your_email@uio.no",
+    "Accept-Language": "en-US,en;q=0.9"
+}
+
+
+ZMAP_CANDIDATES = [
+    shutil.which("zmap"),
+    "/usr/sbin/zmap",
+    "/usr/local/sbin/zmap",
+    "/opt/homebrew/sbin/zmap",
+    "/opt/local/sbin/zmap",
+]
+
+# ---------- blacklist (reproducibility) -----------
+DEFAULT_BLACKLIST_TEXT = """
+0.0.0.0/8
+10.0.0.0/8
+100.64.0.0/10
+127.0.0.0/8
+169.254.0.0/16
+172.16.0.0/12
+192.0.2.0/24
+192.168.0.0/16
+198.18.0.0/15
+198.51.100.0/24
+203.0.113.0/24
+224.0.0.0/4
+240.0.0.0/4
+255.255.255.255/32
+"""
+
+def ensure_blacklist(out_dir: Path, path_from_cli: str = "") -> str:
+    """Return a blacklist path.
+    Priority: CLI path -> system /etc/zmap/blacklist.conf -> local generated file.
+    """
+    if path_from_cli and Path(path_from_cli).exists():
+        return path_from_cli
+    sys_blk = Path("/etc/zmap/blacklist.conf")
+    if sys_blk.exists():
+        return str(sys_blk)
+    local_blk = out_dir / "zmap_blacklist.conf"
+    if not local_blk.exists():
+        ensure_dir(local_blk.parent)
+        local_blk.write_text(DEFAULT_BLACKLIST_TEXT, encoding="utf-8")
+    return str(local_blk)
+
+# -------------------------------
+# Helpers
+# -------------------------------
+
+def now_utc() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def ensure_dir(p: Path) -> None:
+    p.mkdir(parents=True, exist_ok=True)
+
+
+def must_be_root() -> None:
+    if os.name != "nt":
+        if os.geteuid() != 0:
+            sys.exit("[!] This command must run as root (sudo) for ZMap raw sockets.")
+
+
+def find_zmap() -> Optional[str]:
+    for p in ZMAP_CANDIDATES:
+        if p and Path(p).exists():
+            return p
+    return None
+
+
+def run(cmd: List[str]) -> Tuple[int, str]:
+    cp = subprocess.run(cmd, text=True, capture_output=True)
+    blob = (cp.stdout or "") + (cp.stderr or "")
+    return cp.returncode, blob
+
+
+# -------------------------------
+# Fetch ranges (RIPE → summarize → collapse)
+# -------------------------------
+
+def summarize_from_start_and_count(start: str, count: int) -> Iterable[ipaddress.IPv4Network]:
+    start_ip = ipaddress.IPv4Address(start)
+    end_ip = ipaddress.IPv4Address(int(start_ip) + count - 1)
+    return ipaddress.summarize_address_range(start_ip, end_ip)
+
+
+def fetch_from_ripe(timeout: int = 45) -> List[str]:
+    if not requests:
+        sys.exit("[!] 'requests' is required. Install with: pip install requests beautifulsoup4")
+    r = requests.get(RIPE_DELEGATED_URL, headers=HEADERS, timeout=timeout)
+    r.raise_for_status()
+    cidrs: List[ipaddress.IPv4Network] = []
+    for line in r.text.splitlines():
+        parts = line.strip().split("|")
+        if len(parts) < 7:
+            continue
+        registry, cc, rtype, start, value, date, status = parts[:7]
+        if registry != "ripencc" or cc != "NO" or rtype != "ipv4":
+            continue
+        try:
+            count = int(value)
+        except Exception:
+            continue
+        cidrs.extend(list(summarize_from_start_and_count(start, count)))
+    # collapse to the minimal set
+    collapsed = list(ipaddress.collapse_addresses(cidrs))
+    return [str(n) for n in collapsed]
+
+
+def fetch_from_ip2location(timeout: int = 30) -> List[str]:
+    if not (requests and BeautifulSoup):
+        print("[!] Skipping IP2Location (requires requests+bs4). Using RIPE only.")
+        return []
+    r = requests.get(IP2LOCATION_URL, headers=HEADERS, timeout=timeout)
+    r.raise_for_status()
+    soup = BeautifulSoup(r.text, "html.parser")
+    out: List[str] = []
+    for table in soup.find_all("table"):
+        for row in table.find_all("tr"):
+            cols = [c.get_text(strip=True) for c in row.find_all(["td", "th"])]
+            if not cols:
+                continue
+            if re.match(r"^\d{1,3}(?:\.\d{1,3}){3}/\d{1,2}$", cols[0]):
+                out.append(cols[0])
+    return out
+
+
+@dataclass
+class FetchResult:
+    cidrs: List[str]
+    sources_meta: dict
+
+
+def fetch_cidrs(sources: List[str], out_dir: Path) -> FetchResult:
+    ensure_dir(out_dir)
+    all_cidrs: List[str] = []
+    meta = {}
+
+    if "ripe" in sources:
+        try:
+            ripe = fetch_from_ripe()
+            meta["ripe_delegated"] = {
+                "url": RIPE_DELEGATED_URL,
+                "count": len(ripe),
+                "fetched_at": now_utc(),
+            }
+            all_cidrs.extend(ripe)
+        except Exception as e:
+            print(f"[!] RIPE fetch failed: {e}")
+
+    if "ip2location" in sources:
+        try:
+            ip2 = fetch_from_ip2location()
+            if ip2:
+                meta["ip2location"] = {
+                    "url": IP2LOCATION_URL,
+                    "count": len(ip2),
+                    "fetched_at": now_utc(),
+                }
+                all_cidrs.extend(ip2)
+        except Exception as e:
+            print(f"[!] IP2Location fetch failed: {e}")
+
+    if not all_cidrs:
+        sys.exit("[!] No CIDRs fetched. Aborting.")
+
+    # Normalize to IPv4 networks and collapse
+    nets: List[ipaddress.IPv4Network] = []
+    for c in set(all_cidrs):
+        try:
+            n = ipaddress.ip_network(c, strict=False)
+            if isinstance(n, ipaddress.IPv4Network):
+                nets.append(n)
+        except Exception:
+            continue
+    merged = [str(n) for n in ipaddress.collapse_addresses(sorted(nets, key=lambda n: (int(n.network_address), n.prefixlen)))]
+
+    # Write pure whitelist (no comments!) so ZMap parses it cleanly
+    wl_path = out_dir / WHITELIST_TXT
+    with wl_path.open("w", encoding="utf-8") as fh:
+        for c in merged:
+            fh.write(c + "\n")
+
+    with (out_dir / CIDRS_JSON).open("w", encoding="utf-8") as fh:
+        json.dump({"cidrs": merged, "generated_at": now_utc()}, fh, indent=2)
+
+    with (out_dir / SOURCES_JSON).open("w", encoding="utf-8") as fh:
+        json.dump(meta, fh, indent=2)
+
+    print(f"[✓] Wrote {len(merged)} CIDRs -> {wl_path}")
+    return FetchResult(cidrs=merged, sources_meta=meta)
+
+
+# -------------------------------
+# Interface detection (Linux/macOS)
+# -------------------------------
+
+def autodetect_iface() -> Optional[str]:
+    system = platform.system().lower()
+    # Linux: ip route get 1.1.1.1 | grep -o 'dev [^ ]\+' | awk '{print $2}'
+    if system == "linux":
+        rc, out = run(["sh", "-lc", "ip route get 1.1.1.1 2>/dev/null | sed -n 's/.* dev \\([^ ]*\\) .*/\\1/p'"])
+        if rc == 0:
+            iface = out.strip().splitlines()[0] if out.strip() else ""
+            return iface or None
+    # macOS: route -n get default | grep interface:
+    if system == "darwin":
+        rc, out = run(["sh", "-lc", "route -n get default 2>/dev/null | sed -n 's/ *interface: *\\(.*\\)/\\1/p'"])
+        if rc == 0:
+            iface = out.strip().splitlines()[0] if out.strip() else ""
+            return iface or None
+    return None
+
+
+# -------------------------------
+# ZMap field compatibility
+# -------------------------------
+
+def detect_csv_fields(zmap_path: str) -> List[str]:
+    """Return a best-effort list of CSV fields supported by your ZMap.
+    We'll prefer ['saddr','success','ttl'] but fall back to what exists.
+    """
+    desired = ["saddr", "success", "ttl", "classification"]
+    rc, out = run([zmap_path, "-O", "csv", "--list-output-fields"])
+    available: List[str] = []
+    if rc == 0:
+        for line in out.splitlines():
+            m = re.match(r"^([a-z0-9_-]+):", line.strip())
+            if m:
+                available.append(m.group(1))
+    chosen: List[str] = []
+    for f in desired:
+        if f in available and f not in chosen:
+            chosen.append(f)
+    # At minimum, ensure target address is present
+    if "saddr" not in chosen and ("daddr" in available):
+        chosen.insert(0, "daddr")  # some builds use daddr as the target
+    elif "saddr" not in chosen:
+        chosen.insert(0, "saddr")  # hope for the best
+    return chosen
+
+
+
+# -------------------------------
+# CIDR helpers (targets accounting)
+# -------------------------------
+
+def count_total_targets(cidrs: List[str]) -> int:
+    total = 0
+    for c in cidrs:
+        try:
+            n = ipaddress.ip_network(c, strict=False)
+            if isinstance(n, ipaddress.IPv4Network):
+                total += int(n.num_addresses)
+        except Exception:
+            continue
+    return int(total)
+
+
+def targets_effective_per_cidr(cidrs: List[str], n_per_cidr: int) -> Tuple[int, dict]:
+    """Return (total_effective, per_cidr_effective).
+    If n_per_cidr>0: effective per CIDR is min(size, n_per_cidr). Else: full size.
+    """
+    per = {}
+    total = 0
+    for c in cidrs:
+        try:
+            n = ipaddress.ip_network(c, strict=False)
+            if not isinstance(n, ipaddress.IPv4Network):
+                continue
+            size = int(n.num_addresses)
+        except Exception:
+            continue
+        eff = min(size, int(n_per_cidr)) if n_per_cidr and n_per_cidr > 0 else size
+        per[c] = eff
+        total += eff
+    return int(total), per
+
+# -------------------------------
+# Scanning
+# -------------------------------
+
+def safe_name(cidr: str) -> str:
+    return cidr.replace(".", "_").replace("/", "__")
+
+
+def parse_csv_row(line: str) -> Optional[dict]:
+    s = line.strip()
+    if not s or s.startswith("saddr") or s.startswith("daddr"):
+        return None
+    parts = [p.strip() for p in s.split(",")]
+    if not parts:
+        return None
+    # first column is target IP (saddr or daddr depending on build)
+    ip = parts[0]
+    try:
+        ipaddress.ip_address(ip)
+    except Exception:
+        return None
+    # best-effort parse for success/classification and ttl if present
+    success = None
+    ttl = None
+    if len(parts) >= 2:
+        success = parts[1]
+    if len(parts) >= 3:
+        ttl = parts[2]
+    return {"ip": ip, "success": success, "ttl": ttl}
+
+
+
+def build_zmap_cmd(
+    zmap_path: str,
+    port: int,
+    whitelist: Path,
+    out_csv: Path,
+    iface: Optional[str],
+    bandwidth: str,
+    verbosity: str,
+    seed: int,
+    output_all: bool,
+    n_limit: int,
+    status_file: Path,
+    csv_fields: List[str],
+    blacklist_path: str,
+) -> List[str]:
+    cmd = [
+        zmap_path,
+        "-M", "tcp_synscan",
+        "-p", str(port),
+        "-w", str(whitelist),
+        "-b", str(blacklist_path),
+        "-o", str(out_csv),
+        "-B", str(bandwidth),
+        f"--verbosity={verbosity}",
+        "-O", "csv",
+        "--output-fields=" + ",".join(csv_fields),
+        "--cooldown-time=0",
+        f"--status-updates-file={status_file}",
+    ]
+    if iface:
+        cmd += ["-i", iface]
+    if n_limit and n_limit > 0:
+        cmd += ["-n", str(n_limit)]
+    if output_all:
+        # Include both open + negative responses, but avoid duplicates.
+        # (Default filter in ZMap is usually "success = 1 && repeat = 0").
+        cmd += ["--output-filter=repeat=0"]
+    if seed and seed > 0:
+        cmd += ["--seed", str(seed)]
+    return cmd
+
+
+def scan(
+    whitelist: Path,
+    ports: List[int],
+    bandwidth: str,
+    verbosity: str,
+    seed: int,
+    output_all: bool,
+    iface: Optional[str],
+    global_max_ips: int,
+    n_per_cidr: int,
+    blacklist_file: str,
+) -> None:
+    must_be_root()
+    zmap_path = find_zmap()
+    if not zmap_path:
+        sys.exit("[!] zmap not found. Install it (apt/brew) or pass a full path with --zmap (not needed here).")
+
+    if not whitelist.exists():
+        sys.exit(f"[!] Whitelist file not found: {whitelist}")
+    blacklist_path = ensure_blacklist(out_dir=whitelist.parent, path_from_cli=blacklist_file)
+
+    # Prepare run dir
+    run_id = now_utc().replace(":", "-")
+    run_dir = SCANS_ROOT / run_id
+    ensure_dir(run_dir)
+
+    # Remember 'latest'
+    latest = SCANS_ROOT / "latest"
+    try:
+        if latest.exists() or latest.is_symlink():
+            latest.unlink()
+        latest.symlink_to(run_dir.name)
+    except Exception:
+        with (SCANS_ROOT / "LATEST.txt").open("w", encoding="utf-8") as fh:
+            fh.write(str(run_dir.resolve()))
+
+    # CSV output aggregator
+    agg_file = run_dir / "aggregate.csv"
+
+    with agg_file.open("w", newline="", encoding="utf-8") as agg_fh:
+        agg = csv.writer(agg_fh)
+        agg.writerow(["scan_timestamp", "run_id", "ip", "ip_block", "port", "status", "ttl", "source"])
+
+        # Probe fields supported by your ZMap
+        csv_fields = detect_csv_fields(zmap_path)
+        print(f"[i] Using CSV fields: {csv_fields}")
+
+        # If global mode: just one target file (the whitelist as-is)
+        if global_max_ips and global_max_ips > 0:
+            for port in ports:
+                port_dir = run_dir / f"port_{port}"
+                ensure_dir(port_dir)
+                out_csv = port_dir / "ALL.csv"
+                status_file = port_dir / "status.json"
+                cmd = build_zmap_cmd(
+                    zmap_path, port, whitelist, out_csv, iface, bandwidth, verbosity,
+                    seed, output_all, global_max_ips, status_file, csv_fields, blacklist_path,
+                )
+                print("\n=== GLOBAL ===")
+                print(" ", " ".join(cmd))
+                rc, blob = run(cmd)
+                # Log command tail for debugging
+                with (port_dir / "zmap.log").open("w", encoding="utf-8") as fh:
+                    fh.write(blob)
+                if rc != 0:
+                    print(f"[!] zmap exit {rc} on port {port}. See {port_dir/'zmap.log'}")
+                    continue
+                if out_csv.exists():
+                    with out_csv.open("r", encoding="utf-8") as fh:
+                        for raw in fh:
+                            row = parse_csv_row(raw)
+                            if not row:
+                                continue
+                            status = (
+                                "open" if row.get("success") in ("1", "success", "synack") else
+                                ("closed" if row.get("success") == "0" else "unknown")
+                            )
+                            agg.writerow([now_utc(), run_id, row["ip"], "", port, status, row.get("ttl"), "zmap"])  # ip_block empty in global
+        else:
+            # Per-CIDR mode (iterate each line of whitelist)
+            cidrs = [line.strip() for line in whitelist.read_text(encoding="utf-8").splitlines() if line.strip()]
+            print(f"[i] Total CIDRs: {len(cidrs)}")
+            for idx, cidr in enumerate(cidrs):
+                cidr_name = safe_name(cidr)
+                targets_file = run_dir / f"targets__{cidr_name}.txt"
+                targets_file.write_text(cidr + "\n", encoding="utf-8")
+                for port in ports:
+                    port_dir = run_dir / f"port_{port}"
+                    ensure_dir(port_dir)
+                    out_csv = port_dir / f"{cidr_name}.csv"
+                    status_file = port_dir / f"{cidr_name}.status.json"
+                    cmd = build_zmap_cmd(
+                        zmap_path, port, targets_file, out_csv, iface, bandwidth, verbosity,
+                        seed, output_all, n_per_cidr, status_file, csv_fields, blacklist_path,
+                    )
+                    print(f"\n=== [{idx+1}/{len(cidrs)}] {cidr} | port {port} ===")
+                    print(" ", " ".join(cmd))
+                    rc, blob = run(cmd)
+                    with (port_dir / f"{cidr_name}.log").open("w", encoding="utf-8") as fh:
+                        fh.write(blob)
+                    if rc != 0:
+                        print(f"[!] zmap exit {rc} for {cidr} port {port}. See {port_dir/(cidr_name + '.log')}")
+                        continue
+                    if out_csv.exists():
+                        with out_csv.open("r", encoding="utf-8") as fh:
+                            for raw in fh:
+                                row = parse_csv_row(raw)
+                                if not row:
+                                    continue
+                                status = (
+                                    "open" if row.get("success") in ("1", "success", "synack") else
+                                    ("closed" if row.get("success") == "0" else "unknown")
+                                )
+                                agg.writerow([now_utc(), run_id, row["ip"], cidr, port, status, row.get("ttl"), "zmap"])
+
+    # Build a thesis-friendly summary (targets-aware + de-duplicated)
+    summary_path = run_dir / "summary.txt"
+
+    # Determine scan scope + target counts
+    cidrs = [line.strip() for line in whitelist.read_text(encoding="utf-8").splitlines() if line.strip()]
+    total_targets_all = count_total_targets(cidrs)
+
+    mode = "GLOBAL" if (global_max_ips and global_max_ips > 0) else "PER_CIDR"
+    if mode == "GLOBAL":
+        targets_effective = int(global_max_ips)
+        per_cidr_eff = {}  # not meaningful in GLOBAL sampling
+    else:
+        targets_effective, per_cidr_eff = targets_effective_per_cidr(cidrs, n_per_cidr)
+
+    # Unique IP sets per port/status
+    open_by_port = {str(p): set() for p in ports}
+    closed_by_port = {str(p): set() for p in ports}
+    other_by_port = {str(p): set() for p in ports}  # any observed responder not classed open/closed
+
+    # CIDR-level responders (works best in PER_CIDR mode where ip_block is filled)
+    cidr_open = {}
+    cidr_closed = {}
+
+    with agg_file.open("r", encoding="utf-8") as fh:
+        reader = csv.DictReader(fh)
+        for r in reader:
+            p = str(r.get("port", ""))
+            ip = r.get("ip", "")
+            s = r.get("status", "")
+            block = r.get("ip_block", "")
+            if p not in open_by_port:
+                continue
+            if s == "open":
+                open_by_port[p].add(ip)
+            elif s == "closed":
+                closed_by_port[p].add(ip)
+            else:
+                other_by_port[p].add(ip)
+
+            if mode == "PER_CIDR" and block:
+                cidr_open.setdefault(block, {"80": set(), "443": set()})
+                cidr_closed.setdefault(block, {"80": set(), "443": set()})
+                if s == "open":
+                    cidr_open[block].setdefault(p, set()).add(ip)
+                elif s == "closed":
+                    cidr_closed[block].setdefault(p, set()).add(ip)
+
+    # Port-level counts
+    port_lines = []
+    for p in ports:
+        ps = str(p)
+        responders = set().union(open_by_port[ps], closed_by_port[ps], other_by_port[ps])
+        open_u = len(open_by_port[ps])
+        closed_u = len(closed_by_port[ps])
+        other_u = len(other_by_port[ps])
+        no_resp = max(0, targets_effective - len(responders))
+        denom = float(targets_effective) if targets_effective > 0 else 1.0
+        port_lines.append((p, open_u, closed_u, other_u, no_resp, (open_u/denom)*100.0, (closed_u/denom)*100.0, (no_resp/denom)*100.0))
+
+    # Cross-port sets
+    open80 = open_by_port.get("80", set())
+    open443 = open_by_port.get("443", set())
+    both_open = sorted(open80.intersection(open443))
+    open_any = set().union(open80, open443)
+
+    with summary_path.open("w", encoding="utf-8") as sf:
+        sf.write(f"Run ID: {run_id}\n")
+        sf.write(f"Mode: {mode}\n")
+        sf.write(f"Ports scanned: {ports}\n")
+        sf.write(f"Whitelist: {whitelist}\n")
+        sf.write(f"CIDRs loaded: {len(cidrs)}\n")
+        sf.write(f"Total targets (all CIDRs): {total_targets_all}\n")
+        sf.write(f"Targets per port (effective): {targets_effective}\n")
+        sf.write(f"Output-all enabled: {output_all}\n")
+        sf.write(f"Bandwidth: {bandwidth} | Seed: {seed} | Iface: {iface or 'auto/unknown'}\n")
+        sf.write("\n")
+
+        for p, open_u, closed_u, other_u, no_resp, open_pct, closed_pct, nr_pct in port_lines:
+            sf.write(
+                f"Port {p}: open_unique={open_u} ({open_pct:.2f}%) "
+                f"closed_unique={closed_u} ({closed_pct:.2f}%) "
+                f"no_response={no_resp} ({nr_pct:.2f}%) "
+                f"other_responders={other_u}\n"
+            )
+
+        sf.write(f"Unique IPs with at least one open port: {len(open_any)}\n")
+        sf.write(f"IPs open on BOTH 80 and 443: {len(both_open)}\n")
+
+        sf.write("\n--- Top CIDR ranges by open responses (any port) ---\n")
+
+        if mode != "PER_CIDR":
+            sf.write("(GLOBAL sampling mode: per-CIDR no_response is not meaningful; showing responders only.)\n")
+            # Count open responders by CIDR is not available (ip_block is empty in GLOBAL). 
+            sf.write("Tip: run PER_CIDR mode (omit --global-max-ips) for range-level accounting.\n")
+        else:
+            # Build top list by open_any within the CIDR (open on 80 or 443)
+            rows = []
+            for cidr in cidrs:
+                eff = per_cidr_eff.get(cidr, 0)
+                o80 = len(cidr_open.get(cidr, {}).get("80", set()))
+                c80 = len(cidr_closed.get(cidr, {}).get("80", set()))
+                o443 = len(cidr_open.get(cidr, {}).get("443", set()))
+                c443 = len(cidr_closed.get(cidr, {}).get("443", set()))
+                nr80 = max(0, eff - o80 - c80)
+                nr443 = max(0, eff - o443 - c443)
+                open_any_c = len(set().union(
+                    cidr_open.get(cidr, {}).get("80", set()),
+                    cidr_open.get(cidr, {}).get("443", set()),
+                ))
+                rows.append((open_any_c, cidr, eff, o80, c80, nr80, o443, c443, nr443))
+
+            rows.sort(reverse=True, key=lambda x: (x[0], x[2]))
+            top = rows[:20]
+
+            sf.write("CIDR                targets    o80    c80   nr80    o443   c443   nr443  open_any\n")
+            sf.write("------------------  ---------  -----  -----  -----  -----  -----  -----  -------\n")
+            for open_any_c, cidr, eff, o80, c80, nr80, o443, c443, nr443 in top:
+                sf.write(
+                    f"{cidr:<18}  {eff:>9}  {o80:>5}  {c80:>5}  {nr80:>5}  {o443:>5}  {c443:>5}  {nr443:>5}  {open_any_c:>7}\n"
+                )
+
+        sf.write("\nNotes:\n")
+        sf.write("- ZMap output is response-driven; hosts with no response are not listed and are shown as 'no_response'.\n")
+        sf.write("- 'closed' is only counted when a negative response is observed (e.g., RST). Many networks silently drop packets.\n")
+
+    print("\n[✓] Done.")
+    print(f"    Aggregate CSV: {agg_file}")
+    print(f"    Summary:       {summary_path}")
+    print("    Per-port logs, CSVs and status JSONs live under the run directory.")
+
+
+# -------------------------------
+# CLI
+# -------------------------------
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Norway IPv4 fetch + ZMap scan (no hardcoding)")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    p_fetch = sub.add_parser("fetch", help="Fetch and merge Norwegian IPv4 CIDRs")
+    p_fetch.add_argument("--out-dir", default=str(OUT_DIR_DEFAULT), help="Output directory (default: data)")
+    p_fetch.add_argument("--sources", nargs="+", default=["ripe"], choices=["ripe", "ip2location"],
+                         help="Sources to use (default: ripe)")
+
+    p_scan = sub.add_parser("scan", help="Run ZMap scan with the whitelist")
+    p_scan.add_argument("--whitelist", default=str(OUT_DIR_DEFAULT / WHITELIST_TXT), help="Path to whitelist file")
+    p_scan.add_argument("--ports", default="80,443", help="Comma-separated ports, e.g., 80,443,8080")
+    p_scan.add_argument("--bandwidth", "-B", default="5M", help="ZMap rate limit (e.g., 5M, 10M)")
+    p_scan.add_argument("--verbosity", default="1", help="ZMap verbosity (default 1)")
+    p_scan.add_argument("--seed", type=int, default=0, help="ZMap --seed for reproducibility (0=off)")
+    p_scan.add_argument(
+        "--open-only",
+        action="store_true",
+        help="Only keep open hits (smaller output). Default includes negative responses too.")
+    p_scan.add_argument(
+        "--blacklist-file",
+        default="",
+        help="Path to ZMap blacklist file. If omitted, uses /etc/zmap/blacklist.conf or generates a local one in data/.")
+    p_scan.add_argument("--iface", default=None, help="Network interface to use (auto-detect if omitted)")
+    p_scan.add_argument("--global-max-ips", type=int, default=0, help="Scan N unique IPs total per port across whitelist (GLOBAL mode)")
+    p_scan.add_argument("--n-per-cidr", type=int, default=500, help="Per-CIDR cap for per-CIDR mode (-n). Set 0 for no cap.")
+
+    args = ap.parse_args()
+
+    if args.cmd == "fetch":
+        out_dir = Path(args.out_dir)
+        fetch_cidrs(args.sources, out_dir)
+        return 0
+
+    if args.cmd == "scan":
+        whitelist = Path(args.whitelist)
+        # Interface detection (only if not provided)
+        iface = args.iface or autodetect_iface()
+        if not iface:
+            print("[i] Could not auto-detect interface. Pass --iface <IFACE> if ZMap errors.")
+        # Parse ports
+        try:
+            ports = [int(p.strip()) for p in args.ports.split(",") if p.strip()]
+        except ValueError as e:
+            sys.exit(f"[!] Invalid port: {e}")
+        scan(
+            whitelist=whitelist,
+            ports=ports,
+            bandwidth=args.bandwidth,
+            verbosity=args.verbosity,
+            seed=args.seed,
+            output_all=(not args.open_only),
+            iface=iface,
+            global_max_ips=args.global_max_ips,
+            n_per_cidr=args.n_per_cidr,
+            blacklist_file=args.blacklist_file,
+        )
+        return 0
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

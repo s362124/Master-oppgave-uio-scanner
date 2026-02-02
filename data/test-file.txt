@@ -1,0 +1,5 @@
+# Norway IPv4 CIDR ranges (merged)
+# Generated: 2025-10-24T13:17:35.925240+00:00Z
+# Sources: ip2location, ripe_delegated
+# This file is intended for input to scanners (e.g., ZMap/Masscan).
+2.18.172.0/22

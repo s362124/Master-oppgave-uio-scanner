@@ -1,0 +1,9 @@
+Run ID: 2026-01-13T12-01-05Z
+Ports scanned: [80, 443]
+Targets per port (estimated): 256
+Output-all enabled: False
+Port 80: open=270 closed=0 unknown=0
+Port 443: open=182 closed=0 unknown=74
+Unique IPs with at least one open port: 242
+IPs open on BOTH 80 and 443: 159
+Total runtime: 18.11s

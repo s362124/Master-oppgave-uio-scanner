@@ -1,0 +1,23 @@
+Run ID: 2026-01-13T13-20-09Z
+Ports scanned: [80, 443]
+CIDR file: data/test-file.txt
+CIDRs loaded: 3
+Total targets (all CIDRs): 3328
+Targets per port (effective): 3328
+Output-all enabled: True
+Port 80: open_unique=792 (23.80%) closed_unique=0 (0.00%) no_response=2536 (76.20%)
+Port 443: open_unique=676 (20.31%) closed_unique=0 (0.00%) no_response=2652 (79.69%)
+Unique IPs with at least one open port: 1297
+IPs open on BOTH 80 and 443: 171
+
+--- Top CIDR ranges by open responses (any port) ---
+CIDR                total      open_80    close_80   no_respons_80    open_443   close_443   no_respons_443  open_any
+------------------  ---------  -----  -----  -----  -----  -----  -----  -------
+2.20.160.0/21            2048    450      0   1598    385      0   1663      736
+2.18.172.0/22            1024    282      0    742    228      0    796      449
+2.20.160.0/24             256     60      0    196     63      0    193      112
+
+Notes:
+- ZMap output is response-driven; hosts with no response are not listed and are shown as 'no_response'.
+- 'closed' means a negative response observed (e.g., RST); 'no_response' may be filtered or silently dropped.
+Total runtime: 18.13s

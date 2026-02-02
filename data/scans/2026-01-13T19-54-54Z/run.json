@@ -1,0 +1,24 @@
+{
+  "run_id": "2026-01-13T19-54-54Z",
+  "started_at": "2026-01-13T19:54:54Z",
+  "host": "MacBookPro.lan",
+  "platform": "macOS-15.6.1-arm64-arm-64bit-Mach-O",
+  "zmap_version": "zmap v4.3.4",
+  "cidr_file": "data/norway_ipv4_cidrs.txt",
+  "cidrs_loaded": 1757,
+  "total_targets_all": 16650640,
+  "targets_per_port_effective": 16650640,
+  "ports": [
+    80,
+    443
+  ],
+  "bandwidth": "10M",
+  "rate": 0,
+  "seed": 0,
+  "iface": "",
+  "gateway_mac": "",
+  "blacklist": "data/zmap_blacklist.conf",
+  "open_only": false,
+  "commands": {},
+  "results": {}
+}

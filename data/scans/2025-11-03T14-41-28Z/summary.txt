@@ -1,0 +1,6 @@
+Run ID: 2025-11-03T14-41-28Z
+Ports scanned: [80, 443]
+Port 80: open=1232 closed=0 unknown=0
+Port 443: open=802 closed=1 unknown=0
+Unique IPs with at least one open port: 1270
+IPs open on BOTH 80 and 443: 69

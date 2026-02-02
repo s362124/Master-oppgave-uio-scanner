@@ -1,0 +1,60 @@
+{
+  "run_id": "2025-09-28T15-40-51Z",
+  "started_at": "2025-09-28T15:40:51Z",
+  "finished_at": "2025-09-28T15:41:27Z",
+  "ports_scanned": [
+    80,
+    443
+  ],
+  "seed_source": "norway_ipv4_cidrs.txt",
+  "bandwidth": "1M",
+  "zmap_n_per_cidr": 100,
+  "verbosity": "1",
+  "targets_cidr_total": 1203,
+  "targets_cidr_scanned": 2,
+  "cidrs_range_indices": {
+    "start": 0,
+    "end": 2
+  },
+  "cidrs_scanned": [
+    "158.37.63.0/24",
+    "2.148.0.0/14"
+  ],
+  "per_port_results_dirnames": {
+    "80": "port_80",
+    "443": "port_443"
+  },
+  "findings_count": 49,
+  "zmap_invocations": [
+    {
+      "cidr": "158.37.63.0/24",
+      "port": 80,
+      "cmd": "/opt/homebrew/sbin/zmap -p 80 -w data/scans/2025-09-28T15-40-51Z/targets__158_37_63_0__24.txt -o data/scans/2025-09-28T15-40-51Z/port_80/158_37_63_0__24.csv -n 100 -B 1M --verbosity=1 -O csv --output-fields=saddr,success,ttl",
+      "exit_code": 0,
+      "stderr_or_stdout_tail": " 18.00%\n 0:06 75% (3s left); send: 100 done (1.34 Kp/s avg); recv: 18 0 p/s (2 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 18.00%\n 0:07 87% (2s left); send: 100 done (1.34 Kp/s avg); recv: 18 0 p/s (2 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 18.00%\n 0:08 99% (1s left); send: 100 done (1.34 Kp/s avg); recv: 18 0 p/s (2 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 18.00%\n 0:09 100% (0s left); send: 100 done (1.34 Kp/s avg); recv: 18 0 p/s (1 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 18.00%"
+    },
+    {
+      "cidr": "158.37.63.0/24",
+      "port": 443,
+      "cmd": "/opt/homebrew/sbin/zmap -p 443 -w data/scans/2025-09-28T15-40-51Z/targets__158_37_63_0__24.txt -o data/scans/2025-09-28T15-40-51Z/port_443/158_37_63_0__24.csv -n 100 -B 1M --verbosity=1 -O csv --output-fields=saddr,success,ttl",
+      "exit_code": 0,
+      "stderr_or_stdout_tail": " 18.00%\n 0:06 75% (3s left); send: 100 done (1.30 Kp/s avg); recv: 18 0 p/s (2 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 18.00%\n 0:07 87% (2s left); send: 100 done (1.30 Kp/s avg); recv: 18 0 p/s (2 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 18.00%\n 0:08 99% (1s left); send: 100 done (1.30 Kp/s avg); recv: 18 0 p/s (2 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 18.00%\n 0:09 100% (0s left); send: 100 done (1.30 Kp/s avg); recv: 18 0 p/s (1 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 18.00%"
+    },
+    {
+      "cidr": "2.148.0.0/14",
+      "port": 80,
+      "cmd": "/opt/homebrew/sbin/zmap -p 80 -w data/scans/2025-09-28T15-40-51Z/targets__2_148_0_0__14.txt -o data/scans/2025-09-28T15-40-51Z/port_80/2_148_0_0__14.csv -n 100 -B 1M --verbosity=1 -O csv --output-fields=saddr,success,ttl",
+      "exit_code": 0,
+      "stderr_or_stdout_tail": "hitrate: 0.00%\n 0:06 75% (3s left); send: 100 done (1.32 Kp/s avg); recv: 0 0 p/s (0 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 0.00%\n 0:07 87% (2s left); send: 100 done (1.32 Kp/s avg); recv: 0 0 p/s (0 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 0.00%\n 0:08 100% (1s left); send: 100 done (1.32 Kp/s avg); recv: 0 0 p/s (0 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 0.00%\n 0:09 100% (0s left); send: 100 done (1.32 Kp/s avg); recv: 0 0 p/s (0 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 0.00%"
+    },
+    {
+      "cidr": "2.148.0.0/14",
+      "port": 443,
+      "cmd": "/opt/homebrew/sbin/zmap -p 443 -w data/scans/2025-09-28T15-40-51Z/targets__2_148_0_0__14.txt -o data/scans/2025-09-28T15-40-51Z/port_443/2_148_0_0__14.csv -n 100 -B 1M --verbosity=1 -O csv --output-fields=saddr,success,ttl",
+      "exit_code": 0,
+      "stderr_or_stdout_tail": " hitrate: 0.00%\n 0:06 75% (3s left); send: 100 done (1.32 Kp/s avg); recv: 0 0 p/s (0 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 0.00%\n 0:07 87% (2s left); send: 100 done (1.32 Kp/s avg); recv: 0 0 p/s (0 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 0.00%\n 0:08 99% (1s left); send: 100 done (1.32 Kp/s avg); recv: 0 0 p/s (0 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 0.00%\n 0:09 100% (0s left); send: 100 done (1.32 Kp/s avg); recv: 0 0 p/s (0 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 0.00%"
+    }
+  ],
+  "errors": [],
+  "notes": "Basistabell inneholder kun nettverksmetadata fra ZMap. Ingen innholdshenting."
+}

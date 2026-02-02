@@ -1,0 +1,98 @@
+{
+  "run_id": "2025-09-29T14-28-31Z",
+  "started_at": "2025-09-29T14:28:31Z",
+  "finished_at": "2025-09-29T14:28:49Z",
+  "ports_scanned": [
+    80,
+    443
+  ],
+  "seed_source": "norway_ipv4_cidrs.txt",
+  "bandwidth": "1M",
+  "zmap_n_per_cidr": 0,
+  "verbosity": "1",
+  "seed": 42,
+  "targets_cidr_total": 1203,
+  "targets_cidr_scanned": 1,
+  "cidrs_range_indices": {
+    "start": 0,
+    "end": 1
+  },
+  "cidrs_scanned": [
+    "158.37.63.0/24"
+  ],
+  "per_port_results_dirnames": {
+    "80": "port_80",
+    "443": "port_443"
+  },
+  "findings_count": 116,
+  "zmap_invocations": [
+    {
+      "cidr": "158.37.63.0/24",
+      "port": 80,
+      "cmd": "/opt/homebrew/sbin/zmap -M tcp_synscan -p 80 -w data/scans/2025-09-29T14-28-31Z/targets__158_37_63_0__24.txt -o data/scans/2025-09-29T14-28-31Z/port_80/158_37_63_0__24.csv -B 1M --verbosity=1 -O csv --output-fields=saddr,success,ttl --seed 42",
+      "exit_code": 0,
+      "stderr_or_stdout_tail": "0:00 0%; send: 4 1 p/s (5.76 Kp/s avg); recv: 0 0 p/s (0 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 0.00%\n 0:01 12%; send: 256 done (1.37 Kp/s avg); recv: 43 43 p/s (42 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 16.80%\n 0:02 25%; send: 256 done (1.37 Kp/s avg); recv: 43 0 p/s (21 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 16.80%\n 0:03 37%; send: 256 done (1.37 Kp/s avg); recv: 43 0 p/s (14 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 16.80%\n 0:04 49%; send: 256 done (1.37 Kp/s avg); recv: 43 0 p/s (10 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 16.80%\n 0:05 61% (4s left); send: 256 done (1.37 Kp/s avg); recv: 43 0 p/s (8 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 16.80%\n 0:06 74% (3s left); send: 256 done (1.37 Kp/s avg); recv: 43 0 p/s (7 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 16.80%\n 0:07 86% (2s left); send: 256 done (1.37 Kp/s avg); recv: 43 0 p/s (6 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 16.80%\n 0:08 98% (1s left); send: 256 done (1.37 Kp/s avg); recv: 43 0 p/s (5 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 16.80%\n 0:09 100% (0s left); send: 256 done (1.37 Kp/s avg); recv: 43 0 p/s (4 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 16.80%"
+    },
+    {
+      "cidr": "158.37.63.0/24",
+      "port": 443,
+      "cmd": "/opt/homebrew/sbin/zmap -M tcp_synscan -p 443 -w data/scans/2025-09-29T14-28-31Z/targets__158_37_63_0__24.txt -o data/scans/2025-09-29T14-28-31Z/port_443/158_37_63_0__24.csv -B 1M --verbosity=1 -O csv --output-fields=saddr,success,ttl --seed 42",
+      "exit_code": 0,
+      "stderr_or_stdout_tail": "0:00 0%; send: 3 1 p/s (1.92 Kp/s avg); recv: 0 0 p/s (0 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 0.00%\n 0:01 12%; send: 256 done (1.35 Kp/s avg); recv: 36 36 p/s (35 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 14.06%\n 0:02 25%; send: 256 done (1.35 Kp/s avg); recv: 36 0 p/s (17 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 14.06%\n 0:03 37%; send: 256 done (1.35 Kp/s avg); recv: 36 0 p/s (11 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 14.06%\n 0:04 49%; send: 256 done (1.35 Kp/s avg); recv: 36 0 p/s (8 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 14.06%\n 0:05 61% (4s left); send: 256 done (1.35 Kp/s avg); recv: 36 0 p/s (7 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 14.06%\n 0:06 74% (3s left); send: 256 done (1.35 Kp/s avg); recv: 36 0 p/s (5 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 14.06%\n 0:07 86% (2s left); send: 256 done (1.35 Kp/s avg); recv: 36 0 p/s (5 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 14.06%\n 0:08 98% (1s left); send: 256 done (1.35 Kp/s avg); recv: 36 0 p/s (4 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 14.06%\n 0:09 100% (0s left); send: 256 done (1.35 Kp/s avg); recv: 36 0 p/s (3 p/s avg); drops: 0 p/s (0 p/s avg); hitrate: 14.06%"
+    }
+  ],
+  "errors": [],
+  "notes": "Passive TCP SYN probes på port(er) i norsk IPv4. Ingen innholdshenting. 80/443 valgt pga. web-scope.",
+  "validation_sample": [
+    {
+      "ip": "158.37.63.86",
+      "port": 443,
+      "connect_ok": true
+    },
+    {
+      "ip": "158.37.63.213",
+      "port": 80,
+      "connect_ok": true
+    },
+    {
+      "ip": "158.37.63.131",
+      "port": 80,
+      "connect_ok": true
+    },
+    {
+      "ip": "158.37.63.178",
+      "port": 80,
+      "connect_ok": true
+    },
+    {
+      "ip": "158.37.63.163",
+      "port": 80,
+      "connect_ok": true
+    },
+    {
+      "ip": "158.37.63.2",
+      "port": 443,
+      "connect_ok": true
+    },
+    {
+      "ip": "158.37.63.163",
+      "port": 443,
+      "connect_ok": true
+    },
+    {
+      "ip": "158.37.63.219",
+      "port": 80,
+      "connect_ok": true
+    },
+    {
+      "ip": "158.37.63.193",
+      "port": 80,
+      "connect_ok": true
+    },
+    {
+      "ip": "158.37.63.38",
+      "port": 443,
+      "connect_ok": true
+    }
+  ]
+}

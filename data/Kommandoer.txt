@@ -1,0 +1,23 @@
+source .venv/bin/activate
+sudo python3 zmap_scan_all.py                                    
+sudo python3 zmap_scan_all.py --ports 80,443 --max-cidrs 2 -n 100
+
+awk -F, 'NR>1 && $5=="80" && $6=="open"{c++} END{print "open_80="c}' data/scans/latest/aggregate.csv
+awk -F, 'NR>1 && $5=="443" && $6=="open"{c++} END{print "open_443="c}' data/scans/latest/aggregate.csv
+awk -F, 'NR>1 && $6=="open"{print $3":"$5}' data/scans/latest/aggregate.csv | sort -u | head
+
+Nye: 
+# Litt bredere (flere blokker), uten -n-bias
+sudo python3 zmap_scan_all.py --ports 80,443 --max-cidrs 5 -n 0 --seed 42
+cat data/scans/latest/summary.txt
+
+sudo python3 zmap_scan_all.py --ports 80,443 --max-cidrs 1 -n 50 --validate-sample 10 --seed 42
+
+sudo -E "$(pwd)/.venv/bin/python" zmap_scan_all.py \
+  --ports 80,443 \
+  --max-ips-total 0 \
+  --rate 500000 \
+  --seed 42 \
+  -i "$IFACE" -G "$GWMAC" \
+  --output-all
+

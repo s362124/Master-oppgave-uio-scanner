@@ -1,0 +1,7 @@
+{
+  "ripe_delegated": {
+    "url": "https://ftp.ripe.net/pub/stats/ripencc/delegated-ripencc-latest",
+    "count": 1210,
+    "fetched_at": "2026-01-13T15:05:22Z"
+  }
+}

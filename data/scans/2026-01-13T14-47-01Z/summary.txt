@@ -1,0 +1,40 @@
+Run ID: 2026-01-13T14-47-01Z
+Ports scanned: [80, 443]
+CIDR file: data/test-file.txt
+CIDRs loaded: 87
+Total targets (all CIDRs): 823552
+Targets per port (effective): 823552
+Output-all enabled: True
+Port 80: open_unique=3215 (0.39%) closed_unique=901 (0.11%) no_response=819436 (99.50%)
+Port 443: open_unique=3180 (0.39%) closed_unique=947 (0.11%) no_response=819425 (99.50%)
+Unique IPs with at least one open port: 6068
+IPs open on BOTH 80 and 443: 327
+
+--- Top CIDR ranges by open responses (any port) ---
+CIDR               total    o80   c80   nr80    o443  c443  nr443  open_any
+-----------------  ------  ----  ----  -----  -----  ----  -----  --------
+23.44.32.0/20        4096   491     0   3605    500     0   3596       922
+23.49.16.0/20        4096   456     0   3640    476     0   3620       875
+20.251.0.0/16       65536   394    13  65129    436    18  65082       797
+3.167.0.0/21         2048   241     0   1807    259     0   1789       470
+20.100.0.0/16       65536   206     6  65324    265    21  65250       461
+2.20.160.0/21        2048   236     0   1812    231     0   1817       446
+4.220.0.0/16        65536   258     0  65278    126     1  65409       372
+23.45.144.0/22       1024   129     0    895    112     0    912       223
+2.18.172.0/22        1024   118     0    906    118     0    906       220
+3.167.8.0/22         1024   110     0    914     97     0    927       196
+4.235.0.0/16        65536   111     4  65421     89    38  65409       194
+31.24.128.0/21       2048    61    51   1936     59    51   1938       108
+23.36.76.0/23         512    58     0    454     48     0    464       101
+5.249.224.0/19       8192    52    27   8113     52    20   8120       100
+3.166.252.0/22       1024    47     0    977     54     0    970        95
+4.177.0.0/16        65536    40     0  65496     32     2  65502        71
+4.219.0.0/16        65536    19     3  65514     35     4  65497        52
+23.33.119.0/24        256    22     0    234     26     0    230        45
+20.47.48.0/23         512    20     0    492     15     0    497        33
+2.22.225.0/24         256    16     0    240      9     0    247        24
+
+Notes:
+- ZMap output is response-driven; hosts with no response are not listed and are shown as 'no_response'.
+- 'closed' counts only *observed* negative responses (e.g., RST). Many networks silently drop packets, so most non-responders appear as 'no_response'.
+Total runtime: 138.64s (2.31 min)

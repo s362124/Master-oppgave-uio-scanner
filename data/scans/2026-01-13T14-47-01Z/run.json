@@ -1,0 +1,42 @@
+{
+  "run_id": "2026-01-13T14-47-01Z",
+  "started_at": "2026-01-13T14:47:01Z",
+  "host": "Hadil-sin-MacBook-Pro.local",
+  "platform": "macOS-15.6.1-arm64-arm-64bit-Mach-O",
+  "zmap_version": "zmap v4.3.4",
+  "cidr_file": "data/test-file.txt",
+  "cidrs_loaded": 87,
+  "total_targets_all": 823552,
+  "targets_per_port_effective": 823552,
+  "ports": [
+    80,
+    443
+  ],
+  "bandwidth": "10M",
+  "rate": 0,
+  "seed": 0,
+  "iface": "",
+  "gateway_mac": "",
+  "blacklist": "data/zmap_blacklist.conf",
+  "open_only": false,
+  "commands": {
+    "80": "/opt/homebrew/sbin/zmap -M tcp_synscan -p 80 -w data/test-file.txt -O csv --output-fields=saddr,success,ttl -b data/zmap_blacklist.conf -o data/scans/2026-01-13T14-47-01Z/port_80/zmap.csv --output-filter=repeat=0 -B 10M",
+    "443": "/opt/homebrew/sbin/zmap -M tcp_synscan -p 443 -w data/test-file.txt -O csv --output-fields=saddr,success,ttl -b data/zmap_blacklist.conf -o data/scans/2026-01-13T14-47-01Z/port_443/zmap.csv --output-filter=repeat=0 -B 10M"
+  },
+  "results": {
+    "80": {
+      "open_unique": 3215,
+      "closed_unique": 901,
+      "no_response": 819436,
+      "output_lines": 4116
+    },
+    "443": {
+      "open_unique": 3180,
+      "closed_unique": 947,
+      "no_response": 819425,
+      "output_lines": 4127
+    }
+  },
+  "finished_at": "2026-01-13T14:49:19Z",
+  "total_runtime_seconds": 138.638
+}
