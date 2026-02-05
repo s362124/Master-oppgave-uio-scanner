@@ -1,0 +1,34 @@
+{
+  "run_id": "2026-02-02T17-36-16Z",
+  "started_at": "2026-02-02T17:36:16Z",
+  "host": "Julia",
+  "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+  "zmap_version": "zmap 2.1.1",
+  "cidr_file": "data/norway_ipv4_whitelist.txt",
+  "cidrs_loaded": 1777,
+  "total_targets_all": 16691088,
+  "targets_per_port_effective": 100000,
+  "ports": [
+    22
+  ],
+  "bandwidth": "1M",
+  "rate": 0,
+  "seed": 1,
+  "iface": "eth0",
+  "gateway_mac": "",
+  "blacklist": "/etc/zmap/blacklist.conf",
+  "open_only": true,
+  "commands": {
+    "22": "/usr/sbin/zmap -M tcp_synscan -p 22 -w data/norway_ipv4_whitelist.txt -O csv --output-fields=saddr,success,ttl -b /etc/zmap/blacklist.conf -o data/scans/2026-02-02T17-36-16Z/port_22/zmap.csv -B 1M -n 100000 --seed 1 -i eth0"
+  },
+  "results": {
+    "22": {
+      "open_unique": 92,
+      "closed_unique": 0,
+      "no_response": 99908,
+      "output_lines": 920
+    }
+  },
+  "finished_at": "2026-02-02T17:37:48Z",
+  "total_runtime_seconds": 91.465
+}

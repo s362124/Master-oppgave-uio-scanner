@@ -1,0 +1,38 @@
+Run ID: 2026-02-03T20-51-30Z
+Ports scanned: [53]
+CIDR file: data/norway_ipv4_whitelist.txt
+CIDRs loaded: 1777
+Total targets (all CIDRs): 16691088
+Targets per port (effective): 20000
+Output-all enabled: True
+Port 53: open_unique=5 (0.03%) closed_unique=352 (1.76%) no_response=19643 (98.22%)
+Unique IPs with at least one open port: 5
+
+--- Top CIDR ranges by open responses (any port) ---
+CIDR                  total       o53       c53      nr53  open_any
+-----------------  --------  --------  --------  --------  --------
+83.108.0.0/15        131072         1         0    131071         1
+193.156.0.0/15       131072         1         1    131070         1
+109.189.0.0/16        65536         1         2     65533         1
+84.234.128.0/17       32768         1         0     32767         1
+38.180.1.0/24           256         1         0       255         1
+84.208.0.0/13        524288         0        16    524272         0
+88.88.0.0/13         524288         0         5    524283         0
+139.112.0.0/13       524288         0         0    524288         0
+2.148.0.0/14         262144         0         0    262144         0
+77.16.0.0/14         262144         0         0    262144         0
+85.164.0.0/14        262144         0         4    262140         0
+89.8.0.0/14          262144         0        14    262130         0
+139.108.0.0/14       262144         0         0    262144         0
+148.120.0.0/14       262144         0         0    262144         0
+158.36.0.0/14        262144         0        10    262134         0
+193.212.0.0/14       262144         0         2    262142         0
+46.66.0.0/15         131072         0         5    131067         0
+46.156.0.0/15        131072         0         0    131072         0
+51.174.0.0/15        131072         0         2    131070         0
+79.160.0.0/15        131072         0         2    131070         0
+
+Notes:
+- ZMap output is response-driven; hosts with no response are not listed and are shown as 'no_response'.
+- 'closed' counts only *observed* negative responses (e.g., RST). Many networks silently drop packets, so most non-responders appear as 'no_response'.
+Total runtime: 10.31s (0.17 min)

@@ -1,7 +1,17 @@
 {
+  "ip2location": {
+    "url": "https://download.ip2location.com/lite/IP2LOCATION-LITE-DB1.CSV.ZIP",
+    "count_raw": 1844,
+    "fetched_at": "2026-02-02T16:42:22Z"
+  },
   "ripe_delegated": {
     "url": "https://ftp.ripe.net/pub/stats/ripencc/delegated-ripencc-latest",
-    "count": 1210,
-    "fetched_at": "2026-01-13T15:05:22Z"
+    "count_raw": 1306,
+    "fetched_at": "2026-02-02T16:42:23Z"
+  },
+  "_merged": {
+    "count_unique_raw": 2071,
+    "count_merged": 1777,
+    "generated_at": "2026-02-02T16:42:23Z"
   }
 }

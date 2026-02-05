@@ -1,0 +1,9 @@
+{"ts": "2026-02-03T17:04:25Z", "ip": "195.159.108.152", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T17:04:25Z", "ip": "51.175.166.64", "port": 21, "service": "ftp", "banner": "220-FileZilla Server 0.9.60 beta", "software": "", "extra": "220-written by Tim Kosse (tim.kosse@filezilla-project.org)\n220 Please visit https://filezilla-project.org/", "error": ""}
+{"ts": "2026-02-03T17:04:25Z", "ip": "146.247.228.232", "port": 21, "service": "ftp", "banner": "220---------- Welcome to Pure-FTPd [privsep] [TLS] ----------", "software": "", "extra": "220-You are user number 6 of 50 allowed.\n220-Local time is now 17:50. Server port: 21.\n220-This is a private system - No anonymous login\n220-IPv6 connections are also welcome on this server.\n220 You will be disconnected after 15 minutes of inactivity.", "error": ""}
+{"ts": "2026-02-03T17:04:25Z", "ip": "62.24.34.82", "port": 21, "service": "ftp", "banner": "220 Microsoft FTP Service", "software": "", "extra": "215 Windows_NT\n211-Extended features supported:\n LANG EN*\n UTF8\n AUTH TLS;TLS-C;SSL;TLS-P;\n PBSZ\n PROT C;P;\n CCC\n HOST\n SIZE\n MDTM", "error": ""}
+{"ts": "2026-02-03T17:04:28Z", "ip": "45.89.61.7", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T17:04:28Z", "ip": "84.234.251.133", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T17:04:34Z", "ip": "185.174.85.212", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T17:04:34Z", "ip": "185.174.85.244", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T17:04:34Z", "ip": "93.188.89.63", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}

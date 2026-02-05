@@ -1,0 +1,38 @@
+{"ts": "2026-02-03T16:51:55Z", "ip": "195.225.23.136", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T16:51:55Z", "ip": "185.7.194.15", "port": 21, "service": "ftp", "banner": "220-FileZilla Server 0.9.57 beta", "software": "", "extra": "220-written by Tim Kosse (tim.kosse@filezilla-project.org)\n220 Please visit https://filezilla-project.org/", "error": ""}
+{"ts": "2026-02-03T16:51:55Z", "ip": "148.123.28.22", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T16:51:55Z", "ip": "148.123.28.48", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T16:51:55Z", "ip": "148.122.131.34", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T16:51:55Z", "ip": "185.243.218.188", "port": 21, "service": "ftp", "banner": "220---------- Welcome to Pure-FTPd [privsep] [TLS] ----------", "software": "", "extra": "220-You are user number 1 of 50 allowed.\n220-Local time is now 00:51. Server port: 21.\n220-IPv6 connections are also welcome on this server.\n220 You will be disconnected after 15 minutes of inactivity.", "error": ""}
+{"ts": "2026-02-03T16:51:55Z", "ip": "93.184.124.123", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T16:51:55Z", "ip": "38.180.76.108", "port": 21, "service": "ftp", "banner": "220 Welcome! Please note that all activity is logged.", "software": "", "extra": "530 Please login with USER and PASS.\n211-Features:\n UTF8\n EPRT\n EPSV\n MDTM\n PASV\n PBSZ\n PROT\n REST STREAM\n SIZE", "error": ""}
+{"ts": "2026-02-03T16:51:55Z", "ip": "51.120.2.197", "port": 21, "service": "ftp", "banner": "220 (vsFTPd 3.0.5)", "software": "", "extra": "530 Please login with USER and PASS.\n211-Features:\n EPRT\n EPSV\n MDTM\n PASV\n PBSZ\n PROT\n REST STREAM\n SIZE\n TVFS", "error": ""}
+{"ts": "2026-02-03T16:51:55Z", "ip": "185.7.61.81", "port": 21, "service": "ftp", "banner": "220 ProFTPD Server (ProFTPD) [::ffff:185.7.61.81]", "software": "", "extra": "215 UNIX Type: L8\n211-Features:\n CLNT\n EPRT\n EPSV\n HOST\n MDTM\n MFF modify;UNIX.group;UNIX.mode;\n MFMT\n MLST modify*;perm*;size*;type*;unique*;UNIX.group*;UNIX.groupname*;UNIX.mode*;UNIX.owner*;UNIX.ownername*;\n REST STREAM", "error": ""}
+{"ts": "2026-02-03T16:51:55Z", "ip": "93.184.122.82", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T16:51:55Z", "ip": "84.212.45.157", "port": 21, "service": "ftp", "banner": "220-", "software": "", "extra": "220-You are user number 1 of 5 allowed.\n220-Local time is now 16:51. Server port: 21.\n220-This is a private system - No anonymous login\n220-IPv6 connections are also welcome on this server.\n220 You will be disconnected after 600 minutes of inactivity.", "error": ""}
+{"ts": "2026-02-03T16:51:55Z", "ip": "82.199.16.38", "port": 21, "service": "ftp", "banner": "220 ProFTPD Server (ProFTPD) [82.199.16.38]", "software": "", "extra": "215 UNIX Type: L8\n211-Features:\n AUTH TLS\n CCC\n CLNT\n CSID\n EPRT\n EPSV\n HOST\n LANG en-US.UTF-8*\n MDTM", "error": ""}
+{"ts": "2026-02-03T16:51:55Z", "ip": "62.97.195.194", "port": 21, "service": "ftp", "banner": "220 bernt.simonsen FTP server (MikroTik 6.43.4) ready", "software": "", "extra": "215 UNIX MikroTik 6.43.4\n500 'FEAT': command not understood", "error": ""}
+{"ts": "2026-02-03T16:51:55Z", "ip": "91.149.50.30", "port": 21, "service": "ftp", "banner": "220 Welcome to FTP server.", "software": "", "extra": "503 Command not understood.\n503 Command not understood.", "error": ""}
+{"ts": "2026-02-03T16:51:56Z", "ip": "46.9.191.113", "port": 21, "service": "ftp", "banner": "220 Hello!", "software": "", "extra": "530 -logged in\n530 -logged in", "error": ""}
+{"ts": "2026-02-03T16:51:58Z", "ip": "109.169.107.253", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T16:51:58Z", "ip": "148.122.178.5", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T16:51:58Z", "ip": "178.232.102.158", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T16:51:58Z", "ip": "185.117.97.229", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T16:51:58Z", "ip": "185.174.85.62", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T16:51:58Z", "ip": "195.159.128.172", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T16:51:58Z", "ip": "195.18.204.190", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T16:51:58Z", "ip": "195.225.24.241", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T16:51:58Z", "ip": "195.54.170.203", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T16:51:58Z", "ip": "195.69.26.147", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T16:51:58Z", "ip": "38.244.172.244", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T16:51:58Z", "ip": "38.244.172.4", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T16:51:58Z", "ip": "5.249.251.211", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T16:51:58Z", "ip": "62.92.251.250", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T16:51:58Z", "ip": "62.97.205.34", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T16:51:58Z", "ip": "62.97.216.87", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T16:51:58Z", "ip": "81.175.1.138", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T16:51:58Z", "ip": "91.123.36.139", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T16:51:58Z", "ip": "91.205.187.130", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T16:52:04Z", "ip": "178.232.80.155", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T16:52:04Z", "ip": "185.174.86.163", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}
+{"ts": "2026-02-03T16:52:04Z", "ip": "62.97.216.126", "port": 21, "service": "ftp", "banner": "", "software": "", "extra": "", "error": ""}

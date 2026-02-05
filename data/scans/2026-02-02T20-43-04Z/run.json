@@ -1,0 +1,24 @@
+{
+  "run_id": "2026-02-02T20-43-04Z",
+  "started_at": "2026-02-02T20:43:04Z",
+  "host": "Julia",
+  "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+  "zmap_version": "zmap 2.1.1",
+  "cidr_file": "data/norway_ipv4_whitelist.txt",
+  "cidrs_loaded": 1777,
+  "total_targets_all": 16691088,
+  "targets_per_port_effective": 16691088,
+  "ports": [
+    21,
+    22
+  ],
+  "bandwidth": "10M",
+  "rate": 0,
+  "seed": 0,
+  "iface": "eth0",
+  "gateway_mac": "",
+  "blacklist": "/etc/zmap/blacklist.conf",
+  "open_only": false,
+  "commands": {},
+  "results": {}
+}

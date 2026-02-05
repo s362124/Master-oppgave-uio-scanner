@@ -15,6 +15,7 @@ import sys
 import time
 import json
 import platform
+import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -63,7 +64,7 @@ def ensure_blacklist(path_from_cli: str) -> str:
         local_blk.write_text(DEFAULT_BLACKLIST_TEXT, encoding="utf-8")
     return str(local_blk)
 
-CIDR_FILE_DEFAULT = Path("data/test-file.txt")
+CIDR_FILE_DEFAULT = Path("data/norway_ipv4_whitelist.txt")
 OUT_ROOT = Path("data/scans")
 AGG_FILE_NAME = "aggregate.csv"
 
@@ -79,6 +80,90 @@ def find_zmap() -> Optional[str]:
         if p and Path(p).exists():
             return p
     return None
+
+def detect_iface() -> str:
+    """
+    Best-effort default interface detection (Linux/WSL).
+    Returns interface name or empty string if not found.
+    """
+    cmds = [
+        ["ip", "route", "get", "1.1.1.1"],
+        ["ip", "route", "get", "8.8.8.8"],
+        ["ip", "route"],
+    ]
+    for cmd in cmds:
+        try:
+            cp = subprocess.run(cmd, capture_output=True, text=True)
+            if cp.returncode != 0:
+                continue
+            out = (cp.stdout or "") + "\n" + (cp.stderr or "")
+            m = re.search(r"\bdev\s+(\S+)", out)
+            if m:
+                return m.group(1)
+        except Exception:
+            continue
+    return ""
+
+def build_dns_query_hex(qname: str, rd: bool = False) -> str:
+    """
+    Build a minimal DNS A query for qname.
+    Returns hex-encoded bytes suitable for ZMap UDP probe-args.
+    """
+    name = qname.strip().strip(".")
+    if not name:
+        name = "example.com"
+    labels = name.split(".")
+    try:
+        qname_bytes = b"".join(
+            bytes([len(label)]) + label.encode("ascii") for label in labels if label
+        ) + b"\x00"
+    except Exception:
+        # Fallback to example.com if encoding fails
+        qname_bytes = b"\x07example\x03com\x00"
+    # Header: ID=0xCAFE, flags=RD? QDCOUNT=1, AN/NS/AR=0
+    flags = 0x0100 if rd else 0x0000
+    header = bytes([
+        0xCA, 0xFE,
+        (flags >> 8) & 0xFF, flags & 0xFF,
+        0x00, 0x01,  # QDCOUNT
+        0x00, 0x00,  # ANCOUNT
+        0x00, 0x00,  # NSCOUNT
+        0x00, 0x00,  # ARCOUNT
+    ])
+    qtype_qclass = b"\x00\x01\x00\x01"  # QTYPE=A, QCLASS=IN
+    payload = header + qname_bytes + qtype_qclass
+    return payload.hex()
+
+def open_run_dir(run_dir: Path) -> None:
+    """
+    Best-effort: open the run directory in a file explorer.
+    Works on Windows, macOS, Linux, and WSL.
+    """
+    try:
+        if platform.system().lower().startswith("win"):
+            subprocess.run(["explorer", str(run_dir.resolve())], check=False)
+            return
+        # WSL: use explorer.exe with Windows path if available
+        if "microsoft" in platform.release().lower():
+            try:
+                cp = subprocess.run(
+                    ["wslpath", "-w", str(run_dir.resolve())],
+                    capture_output=True,
+                    text=True,
+                )
+                win_path = (cp.stdout or "").strip()
+                if win_path:
+                    subprocess.run(["explorer.exe", win_path], check=False)
+                    return
+            except Exception:
+                pass
+        if shutil.which("xdg-open"):
+            subprocess.run(["xdg-open", str(run_dir.resolve())], check=False)
+            return
+        if shutil.which("open"):
+            subprocess.run(["open", str(run_dir.resolve())], check=False)
+    except Exception:
+        pass
 
 def get_zmap_version(zmap_path: str) -> str:
     try:
@@ -180,25 +265,66 @@ def estimate_runtime(total_ips: int, bandwidth_mbps: float, ports_count: int,
 
 def write_open_lists(run_dir: Path, open_by_port: dict) -> None:
     """Write helper lists for downstream validation (httpx/zgrab)."""
-    open80 = sorted(open_by_port.get("80", set()))
-    open443 = sorted(open_by_port.get("443", set()))
-    both = sorted(set(open80).intersection(open443))
-    any_open = sorted(set(open80).union(open443))
+    # Always write per-port open lists (useful for non-web services).
+    for port, ips in open_by_port.items():
+        ip_list = sorted(ips)
+        (run_dir / f"open_{port}.txt").write_text(
+            "\n".join(ip_list) + ("\n" if ip_list else ""), encoding="utf-8"
+        )
 
-    (run_dir / "open_80.txt").write_text("\n".join(open80) + ("\n" if open80 else ""), encoding="utf-8")
-    (run_dir / "open_443.txt").write_text("\n".join(open443) + ("\n" if open443 else ""), encoding="utf-8")
-    (run_dir / "open_both_80_443.txt").write_text("\n".join(both) + ("\n" if both else ""), encoding="utf-8")
-    (run_dir / "open_any_80_443.txt").write_text("\n".join(any_open) + ("\n" if any_open else ""), encoding="utf-8")
+    # Only write 80/443 convenience lists if both ports were scanned.
+    has80 = "80" in open_by_port
+    has443 = "443" in open_by_port
+
+    if has80 and has443:
+        open80 = sorted(open_by_port.get("80", set()))
+        open443 = sorted(open_by_port.get("443", set()))
+        both = sorted(set(open80).intersection(open443))
+        any_open = sorted(set(open80).union(open443))
+
+        (run_dir / "open_both_80_443.txt").write_text(
+            "\n".join(both) + ("\n" if both else ""), encoding="utf-8"
+        )
+        (run_dir / "open_any_80_443.txt").write_text(
+            "\n".join(any_open) + ("\n" if any_open else ""), encoding="utf-8"
+        )
+    else:
+        # Clean up legacy web-only lists if they exist.
+        for fname in ("open_both_80_443.txt", "open_any_80_443.txt"):
+            fpath = run_dir / fname
+            if fpath.exists():
+                try:
+                    fpath.unlink()
+                except Exception:
+                    pass
+    # Remove per-port files that do not apply to this run (if left from earlier runs).
+    if not has80:
+        fpath = run_dir / "open_80.txt"
+        if fpath.exists():
+            try:
+                fpath.unlink()
+            except Exception:
+                pass
+    if not has443:
+        fpath = run_dir / "open_443.txt"
+        if fpath.exists():
+            try:
+                fpath.unlink()
+            except Exception:
+                pass
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ports", default="80,443")
+    ap.add_argument("--ports", default="21,22,53",
+                    help="Comma-separated ports to scan (default: 21,22,53).")
     ap.add_argument("--max-ips-total", type=int, default=0,
                     help="Hvis satt: -n til zmap (gjelder per port siden vi kjører zmap per port).")
-    ap.add_argument("--bandwidth", default="10M")
+    ap.add_argument("--bandwidth", default="10M",
+                    help="ZMap bandwidth target (default: 10M).")
     ap.add_argument("--rate", type=int, default=0)
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--iface", "-i", default="")
+    ap.add_argument("--iface", "-i", default="",
+                    help="Network interface (auto-detect if omitted on Linux/WSL).")
     ap.add_argument("--gateway-mac", "-G", default="")
     ap.add_argument("--blacklist-file", "-b", default="")
     ap.add_argument(
@@ -209,6 +335,14 @@ def main():
             "Sett --open-only for å kun beholde 'open'-treff (mindre output / raskere parsing)."
         ),
     )
+    ap.add_argument("--dns-udp", dest="dns_udp", action="store_true", default=True,
+                    help="Bruk UDP DNS-probe for port 53 (default: true).")
+    ap.add_argument("--dns-tcp", dest="dns_udp", action="store_false",
+                    help="Tving TCP SYN-scan for port 53 (ikke UDP).")
+    ap.add_argument("--dns-query", default="example.com",
+                    help="DNS qname for UDP-probe (default: example.com).")
+    ap.add_argument("--dns-rd", action="store_true",
+                    help="Sett RD-flagget (recursion desired) i DNS-probe.")
     ap.add_argument("--cidr-file", default=str(CIDR_FILE_DEFAULT), help="Path to CIDR/whitelist file (default: data/norway_ipv4_whitelist.txt)")
     # Raw ZMap CSV handling:
     # Default: keep raw files (port_*/zmap.csv) because they may be needed for downstream work.
@@ -227,11 +361,23 @@ def main():
                     help="Skriv aggregate.csv (kan bli stor). Default: ikke skriv aggregate.")
     ap.add_argument("--no-open-lists", action="store_true",
                     help="Ikke skriv open_*.txt lister. Default: skriv dem.")
+    ap.add_argument("--no-latest", action="store_true",
+                    help="Ikke oppdater data/scans/latest peker (nyttig for test-kjøringer).")
+    ap.add_argument("--open-run-dir", action="store_true",
+                    help="Aapne run-mappen i filutforsker etter fullfort skann.")
     args = ap.parse_args()
 
     # Default: we want both open and negative responses for analysis.
     # Use --open-only to reduce output size to only open responders.
     args.output_all = not args.open_only
+
+    if not args.iface:
+        detected = detect_iface()
+        if detected:
+            args.iface = detected
+            print(f"[i] Auto-detected iface: {args.iface}")
+        else:
+            print("[i] No --iface provided and auto-detect failed; letting ZMap choose default.")
 
 
     zmap_path = find_zmap()
@@ -265,6 +411,9 @@ def main():
         "gateway_mac": args.gateway_mac,
         "blacklist": blacklist_path,
         "open_only": bool(args.open_only),
+        "dns_udp": bool(args.dns_udp),
+        "dns_query": args.dns_query,
+        "dns_rd": bool(args.dns_rd),
         "commands": {},
         "results": {},
     }
@@ -290,7 +439,6 @@ def main():
     run_meta["run_id"] = run_id
     run_dir = OUT_ROOT / run_id
     ensure_dir(run_dir)
-    write_symlink_latest(OUT_ROOT, run_dir)
     (run_dir / "run.json").write_text(json.dumps(run_meta, indent=2), encoding="utf-8")
 
     # Removed creation of all_targets_file/targets__ALL.txt
@@ -320,14 +468,27 @@ def main():
         ensure_dir(port_dir)
         out_csv = port_dir / "zmap.csv"
 
-        cmd = [
-            zmap_path, "-M", "tcp_synscan", "-p", str(port),
-            "-w", str(cidr_file),
-            "-O", "csv",
-            "--output-fields=saddr,success,ttl",
-            "-b", blacklist_path,
-            "-o", str(out_csv),
-        ]
+        use_dns_udp = (port == 53 and args.dns_udp)
+        if use_dns_udp:
+            dns_hex = build_dns_query_hex(args.dns_query, rd=args.dns_rd)
+            cmd = [
+                zmap_path, "-M", "udp", "-p", str(port),
+                "-w", str(cidr_file),
+                "-O", "csv",
+                "--output-fields=saddr,success,ttl",
+                "--probe-args", f"hex:{dns_hex}",
+                "-b", blacklist_path,
+                "-o", str(out_csv),
+            ]
+        else:
+            cmd = [
+                zmap_path, "-M", "tcp_synscan", "-p", str(port),
+                "-w", str(cidr_file),
+                "-O", "csv",
+                "--output-fields=saddr,success,ttl",
+                "-b", blacklist_path,
+                "-o", str(out_csv),
+            ]
 
         # Viktig:
         # - Default output i ZMap er typisk kun success=1.
@@ -438,9 +599,12 @@ def main():
     if fh:
         fh.close()
 
-    # Summary + “both open”
-    both_open = sorted(open_by_port.get("80", set()).intersection(open_by_port.get("443", set())))
+    # Summary + optional "both open" (only for 80/443 scans)
+    ports_str = [str(p) for p in ports]
     unique_open_ips = set().union(*open_by_port.values()) if open_by_port else set()
+    both_open = []
+    if "80" in ports_str and "443" in ports_str:
+        both_open = sorted(open_by_port.get("80", set()).intersection(open_by_port.get("443", set())))
 
     t1_total = time.perf_counter()
 
@@ -464,36 +628,51 @@ def main():
                 f"no_response={c['unknown']} ({nr_pct:.2f}%)\n"
             )
         sf.write(f"Unique IPs with at least one open port: {len(unique_open_ips)}\n")
-        sf.write(f"IPs open on BOTH 80 and 443: {len(both_open)}\n")
+        if both_open:
+            sf.write(f"IPs open on BOTH 80 and 443: {len(both_open)}\n")
 
         sf.write("\n--- Top CIDR ranges by open responses (any port) ---\n")
 
         # Compute per-CIDR stats (unique responders) and derive no_response as remainder of CIDR size.
         rows = []
         for net_str, total in cidr_total_by_net.items():
-            open_80 = len(cidr_open_by_port[net_str].get("80", set()))
-            close_80 = len(cidr_closed_by_port[net_str].get("80", set()))
-            open_443 = len(cidr_open_by_port[net_str].get("443", set()))
-            close_443 = len(cidr_closed_by_port[net_str].get("443", set()))
-            no_respons_80 = max(0, total - open_80 - close_80)
-            no_respons_443 = max(0, total - open_443 - close_443)
-            open_any = len(set().union(
-                cidr_open_by_port[net_str].get("80", set()),
-                cidr_open_by_port[net_str].get("443", set()),
-            ))
-            rows.append((open_any, net_str, total, open_80, close_80, no_respons_80, open_443, close_443, no_respons_443))
+            per_port = {}
+            for p in ports_str:
+                open_p = len(cidr_open_by_port[net_str].get(p, set()))
+                close_p = len(cidr_closed_by_port[net_str].get(p, set()))
+                no_resp_p = max(0, total - open_p - close_p)
+                per_port[p] = (open_p, close_p, no_resp_p)
+            if ports_str:
+                open_any = len(set().union(*[cidr_open_by_port[net_str].get(p, set()) for p in ports_str]))
+            else:
+                open_any = 0
+            rows.append((open_any, net_str, total, per_port))
 
         rows.sort(reverse=True, key=lambda x: (x[0], x[2]))
         top = rows[:20]
 
-        # Fixed-width, readable table
-        sf.write("CIDR               total    o80   c80   nr80    o443  c443  nr443  open_any\n")
-        sf.write("-----------------  ------  ----  ----  -----  -----  ----  -----  --------\n")
-        for open_any, net_str, total, open_80, close_80, no_respons_80, open_443, close_443, no_respons_443 in top:
-            sf.write(
-                f"{net_str:<17}  {total:>6}  {open_80:>4}  {close_80:>4}  {no_respons_80:>5}  "
-                f"{open_443:>5}  {close_443:>4}  {no_respons_443:>5}  {open_any:>8}\n"
-            )
+        # Fixed-width, readable table (dynamic columns based on scanned ports)
+        cidr_w = 17
+        count_w = 8
+        header = f"{'CIDR':<{cidr_w}}  {'total':>{count_w}}"
+        for p in ports_str:
+            header += f"  {('o' + p):>{count_w}}  {('c' + p):>{count_w}}  {('nr' + p):>{count_w}}"
+        header += f"  {'open_any':>{count_w}}"
+        sf.write(header + "\n")
+
+        sep = f"{'-' * cidr_w}  {'-' * count_w}"
+        for _ in ports_str:
+            sep += f"  {'-' * count_w}  {'-' * count_w}  {'-' * count_w}"
+        sep += f"  {'-' * count_w}"
+        sf.write(sep + "\n")
+
+        for open_any, net_str, total, per_port in top:
+            line = f"{net_str:<{cidr_w}}  {total:>{count_w}}"
+            for p in ports_str:
+                open_p, close_p, no_resp_p = per_port[p]
+                line += f"  {open_p:>{count_w}}  {close_p:>{count_w}}  {no_resp_p:>{count_w}}"
+            line += f"  {open_any:>{count_w}}"
+            sf.write(line + "\n")
 
         sf.write("\nNotes:\n")
         sf.write("- ZMap output is response-driven; hosts with no response are not listed and are shown as 'no_response'.\n")
@@ -512,12 +691,21 @@ def main():
     # Persist final metadata
     (run_dir / "run.json").write_text(json.dumps(run_meta, indent=2), encoding="utf-8")
 
+    # Update latest pointer only after a successful run completes.
+    if not args.no_latest:
+        write_symlink_latest(OUT_ROOT, run_dir)
+
     if agg_file:
         print(f"[✓] Ferdig — resultater i {agg_file}")
     else:
         print("[✓] Ferdig — aggregate.csv deaktivert (--write-aggregate for å skrive den)")
     print(f"    Oppsummering: {summary_path}")
-    print(f"    Latest-peker: {OUT_ROOT / 'latest'}")
+    if args.no_latest:
+        print("    Latest-peker: (ikke oppdatert, --no-latest)")
+    else:
+        print(f"    Latest-peker: {OUT_ROOT / 'latest'}")
+    if args.open_run_dir:
+        open_run_dir(run_dir)
     return 0
 
 if __name__ == "__main__":
