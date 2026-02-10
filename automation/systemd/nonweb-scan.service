@@ -1,0 +1,14 @@
+[Unit]
+Description=UiO non-web scanner pipeline
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=REPLACE_ME_USER
+WorkingDirectory=REPLACE_ME_PROJECT_DIR
+ExecStart=/bin/bash REPLACE_ME_PROJECT_DIR/run_nonweb.sh --passes 1 --seed 1 --seed-step 1000
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+

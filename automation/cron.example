@@ -1,0 +1,8 @@
+# Run hourly at minute 5 (adjust as needed).
+# Replace REPLACE_ME_PROJECT_DIR with your absolute project path.
+# The script itself handles lock + logging.
+5 * * * * cd REPLACE_ME_PROJECT_DIR && /bin/bash ./run_nonweb.sh --passes 1 --seed 1 --seed-step 1000
+
+# Optional: every 2 hours if full runs overlap with hourly:
+# 5 */2 * * * cd REPLACE_ME_PROJECT_DIR && /bin/bash ./run_nonweb.sh --passes 1 --seed 1 --seed-step 1000
+

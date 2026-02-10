@@ -3,12 +3,13 @@
 """
 grab_nonweb_banners.py
 
-Passive-ish banner grabbing for non-web services (SSH, FTP).
+Passive-ish banner grabbing for non-web services (SSH, FTP, VNC).
 Reads a list of IPs (one per line) and writes JSONL + optional SQLite.
 
 Examples:
   python grab_nonweb_banners.py --input data/scans/latest/open_22.txt --service ssh
   python grab_nonweb_banners.py --input data/scans/latest/open_21.txt --service ftp --extended
+  python grab_nonweb_banners.py --input data/scans/latest/open_5900.txt --service vnc
 """
 
 import argparse
@@ -23,6 +24,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 UTC = timezone.utc
 
 SSH_BANNER_RE = re.compile(r"^SSH-\d\.\d-(?P<software>.+)$")
+VNC_BANNER_RE = re.compile(r"RFB\s*(?P<version>\d{3}\.\d{3})", re.IGNORECASE)
 
 
 def now_utc() -> str:
@@ -45,6 +47,11 @@ def iter_ips(path: Path, limit: int = 0) -> Iterable[str]:
 def parse_ssh_software(banner: str) -> str:
     m = SSH_BANNER_RE.match(banner.strip())
     return m.group("software") if m else ""
+
+
+def parse_vnc_software(banner: str) -> str:
+    m = VNC_BANNER_RE.search(banner.strip())
+    return f"RFB {m.group('version')}" if m else ""
 
 
 async def read_line(reader: asyncio.StreamReader, timeout: float, max_bytes: int = 255) -> str:
@@ -95,11 +102,28 @@ async def read_ftp_multiline(reader: asyncio.StreamReader, timeout: float, max_l
     return lines
 
 
-async def grab_ftp(ip: str, port: int, timeout: float, extended: bool) -> Tuple[str, str, Optional[str]]:
+async def grab_ftp(
+    ip: str,
+    port: int,
+    timeout: float,
+    extended: bool,
+    login_check: bool,
+) -> Tuple[str, str, Optional[str]]:
     try:
         reader, writer = await asyncio.wait_for(asyncio.open_connection(ip, port), timeout=timeout)
         banner = await read_line(reader, timeout=timeout)
-        extra = ""
+        extra_parts: List[str] = []
+        if login_check:
+            try:
+                writer.write(b"USER anonymous\r\n")
+                await writer.drain()
+                login_resp = await read_line(reader, timeout=timeout)
+                if login_resp:
+                    # Fingerprint login mode without attempting password submission.
+                    extra_parts.append(f"LOGIN_CHECK_USER_ANON: {login_resp}")
+            except Exception:
+                pass
+
         if extended:
             try:
                 writer.write(b"SYST\r\n")
@@ -108,7 +132,7 @@ async def grab_ftp(ip: str, port: int, timeout: float, extended: bool) -> Tuple[
                 writer.write(b"FEAT\r\n")
                 await writer.drain()
                 feat_lines = await read_ftp_multiline(reader, timeout=timeout)
-                extra = "\n".join([l for l in [syst] if l] + feat_lines).strip()
+                extra_parts.extend([l for l in [syst] if l] + feat_lines)
             except Exception:
                 pass
         try:
@@ -116,7 +140,25 @@ async def grab_ftp(ip: str, port: int, timeout: float, extended: bool) -> Tuple[
             await writer.wait_closed()
         except Exception:
             pass
+        extra = "\n".join([p for p in extra_parts if p]).strip()
         return banner, extra, None
+    except Exception as e:
+        return "", "", str(e)
+
+
+async def grab_vnc(ip: str, port: int, timeout: float) -> Tuple[str, str, Optional[str]]:
+    try:
+        reader, writer = await asyncio.wait_for(asyncio.open_connection(ip, port), timeout=timeout)
+        raw = await asyncio.wait_for(reader.read(64), timeout=timeout)
+        banner = raw.decode(errors="replace").strip()
+        if "\n" in banner:
+            banner = banner.splitlines()[0].strip()
+        try:
+            writer.close()
+            await writer.wait_closed()
+        except Exception:
+            pass
+        return banner, parse_vnc_software(banner), None
     except Exception as e:
         return "", "", str(e)
 
@@ -213,6 +255,7 @@ async def worker(
     port: int,
     timeout: float,
     extended: bool,
+    ftp_login_check: bool,
 ) -> None:
     while True:
         ip = await ip_queue.get()
@@ -222,9 +265,12 @@ async def worker(
         if service == "ssh":
             banner, software, error = await grab_ssh(ip, port, timeout)
             extra = ""
-        else:
-            banner, extra, error = await grab_ftp(ip, port, timeout, extended)
+        elif service == "ftp":
+            banner, extra, error = await grab_ftp(ip, port, timeout, extended, ftp_login_check)
             software = ""
+        else:
+            banner, software, error = await grab_vnc(ip, port, timeout)
+            extra = ""
 
         await result_queue.put(
             {
@@ -248,7 +294,8 @@ async def run_async(args: argparse.Namespace) -> int:
         return 2
 
     service = args.service
-    port = args.port or (22 if service == "ssh" else 21)
+    default_ports = {"ssh": 22, "ftp": 21, "vnc": 5900}
+    port = args.port or default_ports[service]
 
     if args.output:
         output_path = Path(args.output)
@@ -277,7 +324,17 @@ async def run_async(args: argparse.Namespace) -> int:
     writer_task = asyncio.create_task(result_writer(result_queue, output_path, db_conn, run_id))
 
     workers = [
-        asyncio.create_task(worker(ip_queue, result_queue, service, port, args.timeout, args.extended))
+        asyncio.create_task(
+            worker(
+                ip_queue,
+                result_queue,
+                service,
+                port,
+                args.timeout,
+                args.extended,
+                args.ftp_login_check,
+            )
+        )
         for _ in range(args.concurrency)
     ]
 
@@ -304,23 +361,28 @@ async def run_async(args: argparse.Namespace) -> int:
         db_conn.commit()
         db_conn.close()
 
-    print(f"[✓] Wrote results: {output_path}")
+    print(f"[OK] Wrote results: {output_path}")
     if args.sqlite:
-        print(f"[✓] SQLite updated: {args.sqlite}")
+        print(f"[OK] SQLite updated: {args.sqlite}")
     return 0
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Grab SSH/FTP banners from an IP list")
+    ap = argparse.ArgumentParser(description="Grab SSH/FTP/VNC banners from an IP list")
     ap.add_argument("--input", required=True, help="Path to IP list (one per line)")
-    ap.add_argument("--service", required=True, choices=["ssh", "ftp"])
-    ap.add_argument("--port", type=int, default=0, help="Override port (default: 22 for ssh, 21 for ftp)")
+    ap.add_argument("--service", required=True, choices=["ssh", "ftp", "vnc"])
+    ap.add_argument("--port", type=int, default=0, help="Override port (default: 22 for ssh, 21 for ftp, 5900 for vnc)")
     ap.add_argument("--output", default="", help="Output JSONL path (default: banners_<service>.jsonl beside input)")
     ap.add_argument("--sqlite", default="", help="Optional SQLite DB to store results")
     ap.add_argument("--concurrency", type=int, default=200)
     ap.add_argument("--timeout", type=float, default=3.0)
     ap.add_argument("--limit", type=int, default=0, help="Limit number of IPs (for testing)")
     ap.add_argument("--extended", action="store_true", help="FTP: send SYST/FEAT after greeting")
+    ap.add_argument(
+        "--ftp-login-check",
+        action="store_true",
+        help="FTP: send USER anonymous and record first response (no password attempt).",
+    )
     args = ap.parse_args()
 
     return asyncio.run(run_async(args))

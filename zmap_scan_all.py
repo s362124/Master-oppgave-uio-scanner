@@ -313,10 +313,143 @@ def write_open_lists(run_dir: Path, open_by_port: dict) -> None:
             except Exception:
                 pass
 
+
+def count_targets(path: Path) -> int:
+    count = 0
+    with path.open("r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            s = line.strip()
+            if s and not s.startswith("#"):
+                count += 1
+    return count
+
+
+def run_postprocess_pipeline(
+    run_dir: Path,
+    sqlite_path: Path,
+    report_path: Path,
+    ftp_extended: bool,
+    ftp_login_check: bool,
+    dns_qname: str,
+    dns_rd: bool,
+    dns_version_bind: bool,
+    ssh_auth_probe: bool,
+    ssh_auth_confirm_legal: bool,
+    ssh_auth_username: str,
+    continue_on_error: bool,
+) -> int:
+    """
+    Run banner grabbers + report directly from this scan's run_dir.
+    """
+    script_dir = Path(__file__).resolve().parent
+    py = sys.executable
+
+    jobs = [
+        {
+            "name": "ssh",
+            "input": run_dir / "open_22.txt",
+            "cmd": [
+                py, str(script_dir / "grab_nonweb_banners.py"),
+                "--input", str(run_dir / "open_22.txt"),
+                "--service", "ssh",
+                "--sqlite", str(sqlite_path),
+            ],
+        },
+        {
+            "name": "ftp",
+            "input": run_dir / "open_21.txt",
+            "cmd": [
+                py, str(script_dir / "grab_nonweb_banners.py"),
+                "--input", str(run_dir / "open_21.txt"),
+                "--service", "ftp",
+                "--sqlite", str(sqlite_path),
+            ] + (["--extended"] if ftp_extended else []) + (["--ftp-login-check"] if ftp_login_check else []),
+        },
+        {
+            "name": "dns",
+            "input": run_dir / "open_53.txt",
+            "cmd": [
+                py, str(script_dir / "grab_dns_banners.py"),
+                "--input", str(run_dir / "open_53.txt"),
+                "--sqlite", str(sqlite_path),
+                "--qname", dns_qname,
+            ] + (["--rd"] if dns_rd else []) + (["--version-bind"] if dns_version_bind else []),
+        },
+        {
+            "name": "vnc",
+            "input": run_dir / "open_5900.txt",
+            "cmd": [
+                py, str(script_dir / "grab_nonweb_banners.py"),
+                "--input", str(run_dir / "open_5900.txt"),
+                "--service", "vnc",
+                "--sqlite", str(sqlite_path),
+            ],
+        },
+    ]
+
+    if ssh_auth_probe:
+        if not ssh_auth_confirm_legal:
+            print("[!] SSH auth probe requested but missing legal acknowledgment.")
+            print("    Add --pipeline-ssh-auth-confirm-legal to proceed.")
+            if not continue_on_error:
+                return 2
+        else:
+            jobs.append(
+                {
+                    "name": "ssh_auth",
+                    "input": run_dir / "open_22.txt",
+                    "cmd": [
+                        py, str(script_dir / "probe_ssh_auth_methods.py"),
+                        "--input", str(run_dir / "open_22.txt"),
+                        "--sqlite", str(sqlite_path),
+                        "--username", ssh_auth_username,
+                        "--confirm-legal",
+                    ],
+                }
+            )
+
+    for job in jobs:
+        input_path = job["input"]
+        if not input_path.exists():
+            print(f"[i] Skipping {job['name']}: input file not found ({input_path})")
+            continue
+
+        targets = count_targets(input_path)
+        if targets == 0:
+            print(f"[i] Skipping {job['name']}: no targets in {input_path.name}")
+            continue
+
+        print(f"[i] {job['name']} targets: {targets}")
+        cp = subprocess.run(job["cmd"], text=True)
+        if cp.returncode != 0:
+            print(f"[!] Postprocess step failed: {job['name']} (rc={cp.returncode})")
+            if not continue_on_error:
+                return cp.returncode
+
+    report_cmd = [
+        py, str(script_dir / "report_nonweb.py"),
+        "--sqlite", str(sqlite_path),
+        "--out", str(report_path),
+    ]
+    cp = subprocess.run(report_cmd, text=True)
+    if cp.returncode != 0:
+        print(f"[!] Postprocess report step failed (rc={cp.returncode})")
+        if not continue_on_error:
+            return cp.returncode
+
+    print("[OK] Postprocess pipeline complete.")
+    print(f"    SQLite: {sqlite_path}")
+    print(f"    Report: {report_path}")
+    return 0
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ports", default="21,22,53",
-                    help="Comma-separated ports to scan (default: 21,22,53).")
+    ap.add_argument("--ports", default="21,22,53,5900",
+                    help="Comma-separated ports to scan (default: 21,22,53,5900).")
+    ap.add_argument("--passes", type=int, default=2,
+                    help="Number of scan passes per port with seed variation (default: 2).")
+    ap.add_argument("--seed-step", type=int, default=1000,
+                    help="Step added to seed between passes (default: 1000).")
     ap.add_argument("--max-ips-total", type=int, default=0,
                     help="Hvis satt: -n til zmap (gjelder per port siden vi kjører zmap per port).")
     ap.add_argument("--bandwidth", default="10M",
@@ -365,7 +498,69 @@ def main():
                     help="Ikke oppdater data/scans/latest peker (nyttig for test-kjøringer).")
     ap.add_argument("--open-run-dir", action="store_true",
                     help="Aapne run-mappen i filutforsker etter fullfort skann.")
+    ap.add_argument("--full-pipeline", dest="full_pipeline", action="store_true", default=True,
+                    help="After scan, run SSH/FTP/DNS/VNC banner grab + nonweb report automatically (default: on).")
+    ap.add_argument("--no-full-pipeline", dest="full_pipeline", action="store_false",
+                    help="Disable automatic postprocess pipeline after scan.")
+    ap.add_argument("--pipeline-sqlite", default="",
+                    help="SQLite path for full pipeline (default: <run_dir>/nonweb_banners.sqlite).")
+    ap.add_argument("--pipeline-report-out", default="",
+                    help="Report output path for full pipeline (default: <run_dir>/nonweb_report.txt).")
+    ap.add_argument("--pipeline-no-ftp-extended", action="store_true",
+                    help="Disable FTP extended probing (SYST/FEAT) in full pipeline mode.")
+    ap.add_argument("--pipeline-ftp-login-check", dest="pipeline_ftp_login_check", action="store_true", default=True,
+                    help="Enable FTP login-establishment fingerprint (USER anonymous only, no password attempt) (default: on).")
+    ap.add_argument("--pipeline-no-ftp-login-check", dest="pipeline_ftp_login_check", action="store_false",
+                    help="Disable FTP login-establishment fingerprint in pipeline mode.")
+    ap.add_argument("--pipeline-dns-qname", default="example.com",
+                    help="DNS qname for pipeline DNS grabber (default: example.com).")
+    ap.add_argument("--pipeline-dns-rd", dest="pipeline_dns_rd", action="store_true", default=True,
+                    help="Set RD flag for pipeline DNS grabber (default: on).")
+    ap.add_argument("--pipeline-no-dns-rd", dest="pipeline_dns_rd", action="store_false",
+                    help="Disable RD flag for pipeline DNS grabber.")
+    ap.add_argument("--pipeline-dns-version-bind", dest="pipeline_dns_version_bind", action="store_true", default=True,
+                    help="Enable version.bind fingerprint in pipeline DNS grabber (default: on).")
+    ap.add_argument("--pipeline-no-dns-version-bind", dest="pipeline_dns_version_bind", action="store_false",
+                    help="Disable version.bind fingerprint in pipeline DNS grabber.")
+    ap.add_argument("--pipeline-ssh-auth-probe", action="store_true",
+                    help="Enable optional SSH auth-method probe (userauth none). OFF by default.")
+    ap.add_argument("--pipeline-ssh-auth-confirm-legal", action="store_true",
+                    help="Required legal acknowledgment for --pipeline-ssh-auth-probe.")
+    ap.add_argument("--pipeline-ssh-auth-username", default="probe",
+                    help="Username for SSH auth-none probe (default: probe).")
+    ap.add_argument("--pipeline-continue-on-error", action="store_true",
+                    help="Continue full pipeline if one postprocess step fails.")
+    ap.add_argument("--pipeline-only", action="store_true",
+                    help="Run only banner/report pipeline (no scan). Uses --pipeline-run-dir or data/scans/latest.")
+    ap.add_argument("--pipeline-run-dir", default="",
+                    help="Run directory for --pipeline-only (default: data/scans/latest).")
     args = ap.parse_args()
+
+    if args.passes < 1:
+        print("[!] --passes must be >= 1")
+        return 2
+    if args.pipeline_only:
+        base_dir = Path(args.pipeline_run_dir) if args.pipeline_run_dir else (OUT_ROOT / "latest")
+        if not base_dir.exists():
+            print(f"[!] Pipeline run directory not found: {base_dir}")
+            return 2
+        run_dir = base_dir.resolve()
+        sqlite_path = Path(args.pipeline_sqlite) if args.pipeline_sqlite else (run_dir / "nonweb_banners.sqlite")
+        report_path = Path(args.pipeline_report_out) if args.pipeline_report_out else (run_dir / "nonweb_report.txt")
+        return run_postprocess_pipeline(
+            run_dir=run_dir,
+            sqlite_path=sqlite_path,
+            report_path=report_path,
+            ftp_extended=(not args.pipeline_no_ftp_extended),
+            ftp_login_check=args.pipeline_ftp_login_check,
+            dns_qname=args.pipeline_dns_qname,
+            dns_rd=args.pipeline_dns_rd,
+            dns_version_bind=args.pipeline_dns_version_bind,
+            ssh_auth_probe=args.pipeline_ssh_auth_probe,
+            ssh_auth_confirm_legal=args.pipeline_ssh_auth_confirm_legal,
+            ssh_auth_username=args.pipeline_ssh_auth_username,
+            continue_on_error=args.pipeline_continue_on_error,
+        )
 
     # Default: we want both open and negative responses for analysis.
     # Use --open-only to reduce output size to only open responders.
@@ -407,6 +602,8 @@ def main():
         "bandwidth": args.bandwidth,
         "rate": args.rate,
         "seed": args.seed,
+        "passes": args.passes,
+        "seed_step": args.seed_step,
         "iface": args.iface,
         "gateway_mac": args.gateway_mac,
         "blacklist": blacklist_path,
@@ -414,6 +611,12 @@ def main():
         "dns_udp": bool(args.dns_udp),
         "dns_query": args.dns_query,
         "dns_rd": bool(args.dns_rd),
+        "full_pipeline": bool(args.full_pipeline),
+        "pipeline_ftp_login_check": bool(args.pipeline_ftp_login_check),
+        "pipeline_dns_qname": args.pipeline_dns_qname,
+        "pipeline_dns_rd": bool(args.pipeline_dns_rd),
+        "pipeline_dns_version_bind": bool(args.pipeline_dns_version_bind),
+        "pipeline_ssh_auth_probe": bool(args.pipeline_ssh_auth_probe),
         "commands": {},
         "results": {},
     }
@@ -433,7 +636,7 @@ def main():
     total_targets_effective = args.max_ips_total if args.max_ips_total > 0 else total_targets_all
     run_meta["targets_per_port_effective"] = total_targets_effective
 
-    estimate_runtime(total_targets_effective, bw_mbps, ports_count=len(ports))
+    estimate_runtime(total_targets_effective, bw_mbps, ports_count=len(ports) * args.passes)
 
     run_id = now_utc().replace(":", "-")
     run_meta["run_id"] = run_id
@@ -466,107 +669,155 @@ def main():
     for port in ports:
         port_dir = run_dir / f"port_{port}"
         ensure_dir(port_dir)
-        out_csv = port_dir / "zmap.csv"
 
-        use_dns_udp = (port == 53 and args.dns_udp)
-        if use_dns_udp:
-            dns_hex = build_dns_query_hex(args.dns_query, rd=args.dns_rd)
-            cmd = [
-                zmap_path, "-M", "udp", "-p", str(port),
-                "-w", str(cidr_file),
-                "-O", "csv",
-                "--output-fields=saddr,success,ttl",
-                "--probe-args", f"hex:{dns_hex}",
-                "-b", blacklist_path,
-                "-o", str(out_csv),
-            ]
-        else:
-            cmd = [
-                zmap_path, "-M", "tcp_synscan", "-p", str(port),
-                "-w", str(cidr_file),
-                "-O", "csv",
-                "--output-fields=saddr,success,ttl",
-                "-b", blacklist_path,
-                "-o", str(out_csv),
-            ]
+        open_ips_union = set()
+        closed_ips_union = set()
+        output_lines_total = 0
+        port_commands = []
+        pass_results = []
+        port_runtime_total = 0.0
 
-        # Viktig:
-        # - Default output i ZMap er typisk kun success=1.
-        # - Med --output-all setter vi output-filter til repeat=0 (da får du også success=0).
-        if args.output_all:
-            cmd += ["--output-filter=repeat=0"]
+        for pass_idx in range(args.passes):
+            pass_no = pass_idx + 1
+            out_csv = port_dir / ("zmap.csv" if args.passes == 1 else f"zmap_pass{pass_no}.csv")
 
-        if args.rate:
-            cmd += ["-r", str(args.rate)]
-        else:
-            cmd += ["-B", str(args.bandwidth)]
+            use_dns_udp = (port == 53 and args.dns_udp)
+            if use_dns_udp:
+                dns_hex = build_dns_query_hex(args.dns_query, rd=args.dns_rd)
+                cmd = [
+                    zmap_path, "-M", "udp", "-p", str(port),
+                    "-w", str(cidr_file),
+                    "-O", "csv",
+                    "--output-fields=saddr,success,ttl",
+                    "--probe-args", f"hex:{dns_hex}",
+                    "-b", blacklist_path,
+                    "-o", str(out_csv),
+                ]
+            else:
+                cmd = [
+                    zmap_path, "-M", "tcp_synscan", "-p", str(port),
+                    "-w", str(cidr_file),
+                    "-O", "csv",
+                    "--output-fields=saddr,success,ttl",
+                    "-b", blacklist_path,
+                    "-o", str(out_csv),
+                ]
 
-        if args.max_ips_total:
-            cmd += ["-n", str(args.max_ips_total)]
-        if args.seed:
-            cmd += ["--seed", str(args.seed)]
-        if args.iface:
-            cmd += ["-i", args.iface]
-        if args.gateway_mac:
-            cmd += ["-G", args.gateway_mac]
+            if args.output_all:
+                cmd += ["--output-filter=repeat=0"]
 
-        run_meta["commands"][str(port)] = " ".join(cmd)
+            if args.rate:
+                cmd += ["-r", str(args.rate)]
+            else:
+                cmd += ["-B", str(args.bandwidth)]
 
-        print(f"[i] Running ZMap on port {port} ...")
-        t0 = time.perf_counter()
-        cp = subprocess.run(cmd, text=True, capture_output=True)
-        t1 = time.perf_counter()
-        if cp.returncode != 0:
-            err = (cp.stderr or cp.stdout or "").strip()
-            print(f"[!] ZMap feilet på port {port} (rc={cp.returncode}). Siste output:\n{err[-2000:]}")
-            if fh:
-                fh.close()
-            return 2
+            if args.max_ips_total:
+                cmd += ["-n", str(args.max_ips_total)]
 
-        # Parse out_csv etterpå (raskere enn å håndtere stdout i Python mens zmap kjører)
-        open_ips = set()
-        closed_ips = set()
-        output_lines = 0
+            if args.seed:
+                seed_for_pass = args.seed + (pass_idx * args.seed_step)
+            else:
+                # Stable, varied default for multi-pass runs.
+                seed_for_pass = pass_no
+            cmd += ["--seed", str(seed_for_pass)]
 
-        if out_csv.exists():
-            with out_csv.open("r", encoding="utf-8", errors="replace") as rf:
-                for line in rf:
-                    d = parse_zmap_csv_line(line)
-                    if not d:
-                        continue
-                    output_lines += 1
-                    ip, success, ttl = d["ip"], d["success"], d["ttl"]
+            if args.iface:
+                cmd += ["-i", args.iface]
+            if args.gateway_mac:
+                cmd += ["-G", args.gateway_mac]
 
-                    if success == "1":
-                        status = "open"
-                        open_ips.add(ip)
-                    elif success == "0":
-                        status = "closed"
-                        closed_ips.add(ip)
-                    else:
-                        status = "unknown"
+            port_commands.append(" ".join(cmd))
+            print(f"[i] Running ZMap on port {port} (pass {pass_no}/{args.passes}, seed={seed_for_pass}) ...")
 
-                    # Map to CIDR (best-effort) for range-level analysis
-                    cidr_hit = find_cidr_for_ip(ip, cidr_nets)
-                    if cidr_hit:
-                        if status == "open":
-                            cidr_open_by_port[cidr_hit][str(port)].add(ip)
-                        elif status == "closed":
-                            cidr_closed_by_port[cidr_hit][str(port)].add(ip)
+            t0 = time.perf_counter()
+            try:
+                cp = subprocess.run(cmd, text=True, capture_output=True)
+            except KeyboardInterrupt:
+                print("\n[!] Scan interrupted by user (Ctrl+C). Stopping gracefully.")
+                run_meta["finished_at"] = now_utc()
+                run_meta["interrupted"] = True
+                run_meta["interrupted_port"] = port
+                run_meta["interrupted_pass"] = pass_no
+                (run_dir / "run.json").write_text(json.dumps(run_meta, indent=2), encoding="utf-8")
+                if fh:
+                    fh.close()
+                return 130
+            t1 = time.perf_counter()
+            pass_runtime = t1 - t0
+            port_runtime_total += pass_runtime
+            if cp.returncode != 0:
+                err = (cp.stderr or cp.stdout or "").strip()
+                print(f"[!] ZMap feilet på port {port} pass {pass_no} (rc={cp.returncode}). Siste output:\n{err[-2000:]}")
+                if fh:
+                    fh.close()
+                return 2
 
-                    if writer:
-                        writer.writerow([now_utc(), run_id, ip, cidr_hit or "", port, status, ttl, "zmap"])
+            open_ips_pass = set()
+            closed_ips_pass = set()
+            output_lines_pass = 0
 
-        open_cnt = len(open_ips)
-        closed_cnt = len(closed_ips)
-        open_by_port[str(port)] = open_ips
+            if out_csv.exists():
+                with out_csv.open("r", encoding="utf-8", errors="replace") as rf:
+                    for line in rf:
+                        d = parse_zmap_csv_line(line)
+                        if not d:
+                            continue
+                        output_lines_pass += 1
+                        ip, success, ttl = d["ip"], d["success"], d["ttl"]
 
-        # Note: ZMap output typically contains *responses* (SYN-ACK/RST). Hosts with no response
-        # are not listed; we model those as "no_response" (stored in `unknown`).
+                        if success == "1":
+                            status = "open"
+                            open_ips_pass.add(ip)
+                        elif success == "0":
+                            status = "closed"
+                            closed_ips_pass.add(ip)
+                        else:
+                            status = "unknown"
+
+                        cidr_hit = find_cidr_for_ip(ip, cidr_nets)
+                        if cidr_hit:
+                            if status == "open":
+                                cidr_open_by_port[cidr_hit][str(port)].add(ip)
+                            elif status == "closed":
+                                cidr_closed_by_port[cidr_hit][str(port)].add(ip)
+
+                        if writer:
+                            writer.writerow([now_utc(), run_id, ip, cidr_hit or "", port, status, ttl, "zmap"])
+
+            open_ips_union.update(open_ips_pass)
+            closed_ips_union.update(closed_ips_pass)
+            output_lines_total += output_lines_pass
+            closed_only_pass = closed_ips_pass - open_ips_pass
+            pass_results.append({
+                "pass": pass_no,
+                "seed": seed_for_pass,
+                "open": len(open_ips_pass),
+                "closed": len(closed_only_pass),
+                "output_lines": output_lines_pass,
+                "runtime_seconds": round(pass_runtime, 3),
+            })
+
+            pass_dupes = max(0, output_lines_pass - len(open_ips_pass) - len(closed_ips_pass))
+            print(
+                f"[i] Port {port} pass {pass_no} done in {pass_runtime:.2f}s | "
+                f"open={len(open_ips_pass)} closed={len(closed_only_pass)} "
+                f"output_lines={output_lines_pass} dupes~={pass_dupes}"
+            )
+
+            if out_csv.exists() and args.cleanup_raw:
+                try:
+                    out_csv.unlink()
+                except Exception:
+                    pass
+
+        closed_only_union = closed_ips_union - open_ips_union
+        open_cnt = len(open_ips_union)
+        closed_cnt = len(closed_only_union)
+        open_by_port[str(port)] = open_ips_union
+
         if args.output_all:
             unknown_cnt = max(0, total_targets_effective - open_cnt - closed_cnt)
         else:
-            # Without output-all, we may only see "open" responses; treat everything else as no_response.
             closed_cnt = 0
             unknown_cnt = max(0, total_targets_effective - open_cnt)
 
@@ -574,26 +825,21 @@ def main():
         counts_port[str(port)]["closed"] = closed_cnt
         counts_port[str(port)]["unknown"] = unknown_cnt
 
+        run_meta["commands"][str(port)] = port_commands[0] if args.passes == 1 else port_commands
         run_meta["results"][str(port)] = {
-            "open_unique": open_cnt,
-            "closed_unique": closed_cnt,
+            "open": open_cnt,
+            "closed": closed_cnt,
             "no_response": unknown_cnt,
-            "output_lines": output_lines,
+            "output_lines": output_lines_total,
+            "passes": pass_results,
         }
 
-        dupes = max(0, output_lines - len(open_ips) - len(closed_ips))
+        dupes = max(0, output_lines_total - len(open_ips_union) - len(closed_ips_union))
         print(
-            f"[i] Port {port} done in {(t1 - t0):.2f}s | "
-            f"open_unique={open_cnt} closed_unique={closed_cnt} no_response={unknown_cnt} | "
-            f"output_lines={output_lines} dupes~={dupes}"
+            f"[i] Port {port} done in {port_runtime_total:.2f}s | "
+            f"open={open_cnt} closed={closed_cnt} no_response={unknown_cnt} | "
+            f"output_lines={output_lines_total} dupes~={dupes}"
         )
-
-        # Slett rå zmap.csv kun hvis eksplisitt bedt om det (for å spare disk/IO)
-        if out_csv.exists() and args.cleanup_raw:
-            try:
-                out_csv.unlink()
-            except Exception:
-                pass
 
     # Close optional aggregate file
     if fh:
@@ -623,8 +869,8 @@ def main():
             closed_pct = (c['closed'] / denom) * 100.0
             nr_pct = (c['unknown'] / denom) * 100.0
             sf.write(
-                f"Port {p}: open_unique={c['open']} ({open_pct:.2f}%) "
-                f"closed_unique={c['closed']} ({closed_pct:.2f}%) "
+                f"Port {p}: open={c['open']} ({open_pct:.2f}%) "
+                f"closed={c['closed']} ({closed_pct:.2f}%) "
                 f"no_response={c['unknown']} ({nr_pct:.2f}%)\n"
             )
         sf.write(f"Unique IPs with at least one open port: {len(unique_open_ips)}\n")
@@ -633,14 +879,20 @@ def main():
 
         sf.write("\n--- Top CIDR ranges by open responses (any port) ---\n")
 
-        # Compute per-CIDR stats (unique responders) and derive no_response as remainder of CIDR size.
+        # Compute per-CIDR stats (unique responders). For sampled runs (-n), per-CIDR "no_response"
+        # cannot be derived correctly because target distribution per CIDR is unknown.
+        sampled_run = args.max_ips_total > 0
         rows = []
         for net_str, total in cidr_total_by_net.items():
             per_port = {}
             for p in ports_str:
-                open_p = len(cidr_open_by_port[net_str].get(p, set()))
-                close_p = len(cidr_closed_by_port[net_str].get(p, set()))
-                no_resp_p = max(0, total - open_p - close_p)
+                open_set = cidr_open_by_port[net_str].get(p, set())
+                closed_set = cidr_closed_by_port[net_str].get(p, set())
+                # Treat "closed" as closed-only to avoid overlap with IPs seen open in another pass.
+                closed_only_set = closed_set - open_set
+                open_p = len(open_set)
+                close_p = len(closed_only_set)
+                no_resp_p = "n/a" if sampled_run else max(0, total - open_p - close_p)
                 per_port[p] = (open_p, close_p, no_resp_p)
             if ports_str:
                 open_any = len(set().union(*[cidr_open_by_port[net_str].get(p, set()) for p in ports_str]))
@@ -677,6 +929,8 @@ def main():
         sf.write("\nNotes:\n")
         sf.write("- ZMap output is response-driven; hosts with no response are not listed and are shown as 'no_response'.\n")
         sf.write("- 'closed' counts only *observed* negative responses (e.g., RST). Many networks silently drop packets, so most non-responders appear as 'no_response'.\n")
+        if sampled_run:
+            sf.write("- This run used a target sample (--max-ips-total), so per-CIDR nr* is shown as 'n/a'.\n")
 
         total_s = (t1_total - t0_total)
         total_min = total_s / 60.0
@@ -706,6 +960,25 @@ def main():
         print(f"    Latest-peker: {OUT_ROOT / 'latest'}")
     if args.open_run_dir:
         open_run_dir(run_dir)
+    if args.full_pipeline:
+        sqlite_path = Path(args.pipeline_sqlite) if args.pipeline_sqlite else (run_dir / "nonweb_banners.sqlite")
+        report_path = Path(args.pipeline_report_out) if args.pipeline_report_out else (run_dir / "nonweb_report.txt")
+        rc = run_postprocess_pipeline(
+            run_dir=run_dir,
+            sqlite_path=sqlite_path,
+            report_path=report_path,
+            ftp_extended=(not args.pipeline_no_ftp_extended),
+            ftp_login_check=args.pipeline_ftp_login_check,
+            dns_qname=args.pipeline_dns_qname,
+            dns_rd=args.pipeline_dns_rd,
+            dns_version_bind=args.pipeline_dns_version_bind,
+            ssh_auth_probe=args.pipeline_ssh_auth_probe,
+            ssh_auth_confirm_legal=args.pipeline_ssh_auth_confirm_legal,
+            ssh_auth_username=args.pipeline_ssh_auth_username,
+            continue_on_error=args.pipeline_continue_on_error,
+        )
+        if rc != 0:
+            return rc
     return 0
 
 if __name__ == "__main__":

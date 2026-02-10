@@ -220,9 +220,9 @@ def main() -> int:
         db_conn.commit()
         db_conn.close()
 
-    print(f"[✓] Wrote results: {output_path}")
+    print(f"[OK] Wrote results: {output_path}")
     if args.sqlite:
-        print(f"[✓] SQLite updated: {args.sqlite}")
+        print(f"[OK] SQLite updated: {args.sqlite}")
     return 0
 
 
