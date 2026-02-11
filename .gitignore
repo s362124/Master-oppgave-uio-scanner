@@ -1,0 +1,11 @@
+# Python cache/artifacts
+__pycache__/
+*.py[cod]
+
+# OS noise
+.DS_Store
+
+# Generated scan run folders (timestamped)
+# Keep the tracked latest pointer in Git.
+data/scans/20*/
+!data/scans/latest
