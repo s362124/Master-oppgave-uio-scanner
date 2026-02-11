@@ -1,0 +1,140 @@
+Non-web banner report
+Total records: 207
+
+Exact open totals by port (from scan open_*.txt files)
+  port  open  source_file  
+  ----  ----  -------------
+  21    60    open_21.txt  
+  22    128   open_22.txt  
+  53    12    open_53.txt  
+  5900  7     open_5900.txt
+
+Counts by service
+  service  count
+  -------  -----
+  ssh      128  
+  ftp      60   
+  dns      12   
+  vnc      7    
+
+Empty banners by service
+  service  count
+  -------  -----
+  ssh      73   
+  ftp      45   
+  vnc      5    
+  dns      3    
+
+Top SSH software strings
+  software                           count
+  ---------------------------------  -----
+  OpenSSH_9.6p1 Ubuntu-3ubuntu13.14  8    
+  OpenSSH_8.4p1 Debian-5+deb11u5     7    
+  dropbear                           4    
+  OpenSSH_8.9p1 Ubuntu-3ubuntu0.13   4    
+  OpenSSH_8.7                        3    
+  dropbear_0.50                      2    
+  OpenSSH_8.2p1 Ubuntu-4ubuntu0.11   2    
+  i-ok_321tF                         1    
+  dropbear_2019.78                   1    
+  Serv-U_15.5.2.102                  1    
+
+Top FTP banner strings
+  banner                                                         count
+  -------------------------------------------------------------  -----
+  220---------- Welcome to Pure-FTPd [privsep] [TLS] ----------  4    
+  220 NASFTPD Turbo station 1.3.5a Server (ProFTPD)              2    
+  220-FileZilla Server 0.9.59 beta                               1    
+  220---------- Welcome to Pure-FTPd [privsep] ----------        1    
+  220 Welcome to Tornado Websys                                  1    
+  220 Welcome to ASUS RT-N56U FTP service.                       1    
+  220 Serv-U FTP Server v15.5.2 ready...                         1    
+  220 Microsoft FTP Service                                      1    
+  220 FTP Server (USG60) [::ffff:195.159.253.130]                1    
+  220 (vsFTPd 3.0.3)                                             1    
+
+Top DNS version strings
+  software                                                                                             count
+  ---------------------------------------------------------------------------------------------------  -----
+  none                                                                                                 1    
+  dnsmasq-2.78                                                                                         1    
+  dnsmasq-2.65                                                                                         1    
+  dnsmasq-2.62                                                                                         1    
+  PowerDNS Authoritative Server 4.7.3 (built Apr 25 2023 12:34:07 by root@bh-centos-7.dev.cpanel.net)  1    
+  No soup for you!                                                                                     1    
+  BIND                                                                                                 1    
+  9.9.5-9+deb8u16-Debian                                                                               1    
+  9.11.36-RedHat-9.11.36-3.el8                                                                         1    
+
+Top VNC banner strings
+  banner       count
+  -----------  -----
+  RFB 003.889  1    
+  RFB 003.007  1    
+
+Top SSH auth-probe software strings
+  (no data)
+
+FTP login-establishment fingerprint
+  category           count
+  -----------------  -----
+  not_tested         44   
+  code_220           6    
+  password_required  6    
+  login_not_allowed  2    
+  code_521           1    
+  response_unparsed  1    
+
+FTP login-check sample responses
+  ip               category           response                                                  
+  ---------------  -----------------  ----------------------------------------------------------
+  77.88.110.123    code_220           220-You are user number 1 of 50 allowed.                  
+  146.247.228.10   code_220           220-You are user number 1 of 50 allowed.                  
+  213.162.240.110  code_220           220-You are user number 1 of 60 allowed.                  
+  45.89.61.7       code_220           220-You are user number 1 of 50 allowed.                  
+  91.192.223.97    code_220           220-written by Tim Kosse (tim.kosse@filezilla-project.org)
+  109.247.37.249   login_not_allowed  530 This FTP server does not allow anonymous logins.      
+  194.63.250.200   password_required  331 Please specify the password.                          
+  195.159.251.243  code_521           521 Not logged in - Secure authentication required        
+  88.84.32.89      code_220           220-You are user number 1 of 30 allowed.                  
+  62.24.34.82      password_required  331 Password required                                     
+
+DNS behavior fingerprint
+  signal               count
+  -------------------  -----
+  rcode=NOERROR,ra=1   4    
+  rcode=REFUSED,ra=0   4    
+  rcode=unknown,ra=na  3    
+  rcode=NOERROR,ra=0   1    
+
+SSH auth-method fingerprint (legal-gated)
+  (no data)
+
+Risk classification (heuristic)
+  service  status    count
+  -------  --------  -----
+  dns      unknown   12   
+  ftp      legacy    2    
+  ftp      ok        1    
+  ftp      unknown   57   
+  ssh      outdated  1    
+  ssh      legacy    4    
+  ssh      ok        40   
+  ssh      unknown   83   
+  vnc      unknown   7    
+
+Legacy/Outdated examples (sample)
+  ip              service  product           version  status  
+  --------------  -------  ----------------  -------  --------
+  185.181.60.131  ssh      OpenSSH           7.6      legacy  
+  185.213.23.93   ssh      OpenSSH           7.4      legacy  
+  185.56.187.8    ssh      OpenSSH           7.9      legacy  
+  212.67.61.85    ssh      dropbear          2019.78  outdated
+  193.71.107.218  ssh      OpenSSH           7.4      legacy  
+  91.192.223.97   ftp      FileZilla Server  0.9.59   legacy  
+  194.63.250.200  ftp      vsFTPd            2.0.7    legacy  
+
+Notes:
+- Risk classification is heuristic based on banner strings (no exploitation).
+- Some sections may show '(no data)' if the corresponding probe was disabled or returned no usable response.
+- Update thresholds/rules in code if your policy changes.

@@ -1,0 +1,109 @@
+{
+  "run_id": "2026-02-10T21-03-55Z",
+  "started_at": "2026-02-10T21:03:55Z",
+  "host": "Julia",
+  "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+  "zmap_version": "zmap 2.1.1",
+  "cidr_file": "data/norway_ipv4_whitelist.txt",
+  "cidrs_loaded": 1777,
+  "total_targets_all": 16691088,
+  "targets_per_port_effective": 200000,
+  "ports": [
+    21,
+    22,
+    53,
+    5900
+  ],
+  "bandwidth": "10M",
+  "rate": 0,
+  "seed": 2,
+  "passes": 1,
+  "seed_step": 1000,
+  "iface": "eth0",
+  "gateway_mac": "",
+  "blacklist": "/etc/zmap/blacklist.conf",
+  "open_only": false,
+  "dns_udp": true,
+  "dns_query": "example.com",
+  "dns_rd": false,
+  "full_pipeline": true,
+  "pipeline_ftp_login_check": true,
+  "pipeline_dns_qname": "example.com",
+  "pipeline_dns_rd": true,
+  "pipeline_dns_version_bind": true,
+  "pipeline_ssh_auth_probe": false,
+  "commands": {
+    "21": "/usr/sbin/zmap -M tcp_synscan -p 21 -w data/norway_ipv4_whitelist.txt -O csv --output-fields=saddr,success,ttl -b /etc/zmap/blacklist.conf -o data/scans/2026-02-10T21-03-55Z/port_21/zmap.csv --output-filter=repeat=0 -B 10M -n 200000 --seed 2 -i eth0",
+    "22": "/usr/sbin/zmap -M tcp_synscan -p 22 -w data/norway_ipv4_whitelist.txt -O csv --output-fields=saddr,success,ttl -b /etc/zmap/blacklist.conf -o data/scans/2026-02-10T21-03-55Z/port_22/zmap.csv --output-filter=repeat=0 -B 10M -n 200000 --seed 2 -i eth0",
+    "53": "/usr/sbin/zmap -M udp -p 53 -w data/norway_ipv4_whitelist.txt -O csv --output-fields=saddr,success,ttl --probe-args hex:cafe00000001000000000000076578616d706c6503636f6d0000010001 -b /etc/zmap/blacklist.conf -o data/scans/2026-02-10T21-03-55Z/port_53/zmap.csv --output-filter=repeat=0 -B 10M -n 200000 --seed 2 -i eth0",
+    "5900": "/usr/sbin/zmap -M tcp_synscan -p 5900 -w data/norway_ipv4_whitelist.txt -O csv --output-fields=saddr,success,ttl -b /etc/zmap/blacklist.conf -o data/scans/2026-02-10T21-03-55Z/port_5900/zmap.csv --output-filter=repeat=0 -B 10M -n 200000 --seed 2 -i eth0"
+  },
+  "results": {
+    "21": {
+      "open": 60,
+      "closed": 1574,
+      "no_response": 198366,
+      "output_lines": 1634,
+      "passes": [
+        {
+          "pass": 1,
+          "seed": 2,
+          "open": 60,
+          "closed": 1574,
+          "output_lines": 1634,
+          "runtime_seconds": 22.167
+        }
+      ]
+    },
+    "22": {
+      "open": 128,
+      "closed": 956,
+      "no_response": 198916,
+      "output_lines": 1084,
+      "passes": [
+        {
+          "pass": 1,
+          "seed": 2,
+          "open": 128,
+          "closed": 956,
+          "output_lines": 1084,
+          "runtime_seconds": 23.193
+        }
+      ]
+    },
+    "53": {
+      "open": 12,
+      "closed": 586,
+      "no_response": 199402,
+      "output_lines": 598,
+      "passes": [
+        {
+          "pass": 1,
+          "seed": 2,
+          "open": 12,
+          "closed": 586,
+          "output_lines": 598,
+          "runtime_seconds": 26.317
+        }
+      ]
+    },
+    "5900": {
+      "open": 7,
+      "closed": 483,
+      "no_response": 199510,
+      "output_lines": 490,
+      "passes": [
+        {
+          "pass": 1,
+          "seed": 2,
+          "open": 7,
+          "closed": 483,
+          "output_lines": 490,
+          "runtime_seconds": 26.296
+        }
+      ]
+    }
+  },
+  "finished_at": "2026-02-10T21:05:35Z",
+  "total_runtime_seconds": 99.139
+}
