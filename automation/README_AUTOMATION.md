@@ -15,7 +15,7 @@ This project includes:
 ## 2) Cron setup (WSL/Linux)
 
 1. Edit `automation/cron.example` and replace `REPLACE_ME_PROJECT_DIR`.
-2. Add the line to your crontab:
+2. Add the line to crontab:
    - `crontab -e`
 3. Paste the cron line.
 
@@ -37,5 +37,5 @@ This project includes:
 
 ## 4) Recommended cadence
 
-If full runs are long, start with every 2 hours (or daily), then tighten cadence if needed.
-
+Default automation cadence in this repository is every 6 hours.
+If full runs are very long, daily scheduling is also acceptable.

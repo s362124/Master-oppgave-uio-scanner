@@ -67,6 +67,15 @@ Use this for final thesis result snapshots.
 sudo python zmap_scan_all.py --max-ips-total 200000 --passes 1 --seed 1
 ```
 
+## Automation
+
+For scheduled runs (lock-safe wrapper, cron template, and systemd timer/service),
+see `automation/README_AUTOMATION.md`.
+
+Automation templates in this repository are configured for every 6 hours.
+If full run duration is very long, daily scheduling is also acceptable.
+Final cadence should be set according to supervisor/project requirements.
+
 ## Output location
 
 Each run creates:
