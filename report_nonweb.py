@@ -173,6 +173,27 @@ def parse_ftp_login_hint(extra: str) -> Tuple[str, str]:
     return ("not_tested", "")
 
 
+def ftp_category_description(category: str) -> str:
+    """
+    Human-readable meaning for FTP anonymous pre-check categories.
+    """
+    if category == "anonymous_allowed":
+        return "Server accepted USER anonymous directly (code 230)."
+    if category == "password_required":
+        return "Server requested password after USER anonymous (code 331)."
+    if category == "account_required":
+        return "Server requested account in addition to login (code 332)."
+    if category == "login_not_allowed":
+        return "Server rejected anonymous login (code 530)."
+    if category == "not_tested":
+        return "Anonymous pre-check was not run for this record."
+    if category.startswith("code_"):
+        return "Server returned another FTP status code after USER anonymous."
+    if category == "response_unparsed":
+        return "Server response was received but not parsed as FTP code."
+    return "Unclassified response."
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Summarize non-web banner scans from SQLite")
     ap.add_argument(
@@ -324,11 +345,40 @@ def main() -> int:
     parts.append(format_section("Top FTP banner strings", ftp_top, ["banner", "count"]))
     parts.append(format_section("Top DNS version strings", dns_top, ["software", "count"]))
     parts.append(format_section("Top VNC banner strings", vnc_top, ["banner", "count"]))
-    parts.append(format_section("Top SSH auth-probe software strings", ssh_auth_top, ["software", "count"]))
+    parts.append(
+        format_section(
+            "Top SSH auth-probe software strings (userauth none)",
+            ssh_auth_top,
+            ["software", "count"],
+        )
+    )
 
     ftp_login_rows = [(k, v) for k, v in sorted(ftp_login_counts.items(), key=lambda x: (-x[1], x[0]))]
-    parts.append(format_section("FTP login-establishment fingerprint", ftp_login_rows, ["category", "count"]))
-    parts.append(format_section("FTP login-check sample responses", ftp_login_samples, ["ip", "category", "response"]))
+    parts.append(
+        format_section(
+            "FTP anonymous pre-check results (USER anonymous only; no PASS sent)",
+            ftp_login_rows,
+            ["category", "count"],
+        )
+    )
+    parts.append(
+        format_section(
+            "FTP anonymous pre-check sample responses",
+            ftp_login_samples,
+            ["ip", "category", "response"],
+        )
+    )
+    ftp_legend_rows = [
+        (k, ftp_category_description(k))
+        for k, _ in sorted(ftp_login_rows, key=lambda x: (-x[1], x[0]))
+    ]
+    parts.append(
+        format_section(
+            "FTP anonymous pre-check category meaning",
+            ftp_legend_rows,
+            ["category", "meaning"],
+        )
+    )
 
     dns_behavior_rows = [(k, v) for k, v in sorted(dns_behavior_counts.items(), key=lambda x: (-x[1], x[0]))]
     parts.append(format_section("DNS behavior fingerprint", dns_behavior_rows, ["signal", "count"]))
@@ -341,11 +391,22 @@ def main() -> int:
     ]
     parts.append(
         format_section(
-            "SSH auth-method fingerprint (legal-gated)",
+            "SSH auth-method probe results (userauth none; no credential login; legal-gated)",
             ssh_auth_rows,
             ["allowed_methods", "password_allowed", "publickey_allowed", "count"],
         )
     )
+    ftp_total = sum(v for _, v in ftp_login_rows)
+    ftp_tested = max(0, ftp_total - ftp_login_counts.get("not_tested", 0))
+    ssh_auth_total = sum(r[3] for r in ssh_auth_rows)
+    methodology_rows = [
+        ("FTP anonymous check mode", "USER anonymous only (no PASS submission)."),
+        ("FTP anonymous checks executed", f"{ftp_tested}/{ftp_total} FTP records"),
+        ("SSH auth probe mode", "SSH userauth none only (no credential login)."),
+        ("SSH auth probes executed", str(ssh_auth_total)),
+        ("Credential login attempts", "Not performed by this pipeline."),
+    ]
+    parts.append(format_section("Methodology and safety boundaries", methodology_rows, ["item", "value"]))
     # Risk summary
     risk_rows = []
     for service in sorted(risk_counts.keys()):
@@ -358,6 +419,8 @@ def main() -> int:
         "Notes:\n"
         "- Risk classification is heuristic based on banner strings (no exploitation).\n"
         "- Some sections may show '(no data)' if the corresponding probe was disabled or returned no usable response.\n"
+        "- FTP anonymous pre-check sends USER anonymous only; this report does not attempt credential login.\n"
+        "- SSH auth-method probe uses userauth none only; this report does not attempt credential login.\n"
         "- Update thresholds/rules in code if your policy changes.\n"
     )
     report = "\n".join(parts).rstrip() + "\n"

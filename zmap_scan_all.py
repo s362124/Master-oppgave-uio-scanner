@@ -252,16 +252,32 @@ def parse_bandwidth_mbps(bw: str) -> float:
     # fallback: anta Mbps hvis bare tall
     return float(s)
 
-def estimate_runtime(total_ips: int, bandwidth_mbps: float, ports_count: int,
-                     bytes_per_probe: int = 120) -> None:
-    if total_ips <= 0:
-        return
+def estimate_runtime_seconds(total_ips: int, bandwidth_mbps: float, ports_count: int,
+                             bytes_per_probe: int = 120) -> float:
+    if total_ips <= 0 or bandwidth_mbps <= 0 or ports_count <= 0:
+        return 0.0
     bits_per_probe = bytes_per_probe * 8
     total_bits = total_ips * bits_per_probe * ports_count
-    seconds = total_bits / (bandwidth_mbps * 1e6)
+    return total_bits / (bandwidth_mbps * 1e6)
+
+def estimate_runtime(total_ips: int, bandwidth_mbps: float, ports_count: int,
+                     bytes_per_probe: int = 120) -> float:
+    seconds = estimate_runtime_seconds(total_ips, bandwidth_mbps, ports_count, bytes_per_probe=bytes_per_probe)
+    if seconds <= 0:
+        return 0.0
     minutes = seconds / 60
     print(f"[i] Estimated duration: ~{seconds:.1f}s ({minutes:.1f} min) "
           f"for {total_ips:,} IPs at {bandwidth_mbps:.1f} Mbit/s over {ports_count} ports")
+    return seconds
+
+def read_text_tail(path: Path, max_chars: int = 2000) -> str:
+    if not path.exists():
+        return ""
+    try:
+        txt = path.read_text(encoding="utf-8", errors="replace")
+        return txt[-max_chars:].strip()
+    except Exception:
+        return ""
 
 def write_open_lists(run_dir: Path, open_by_port: dict) -> None:
     """Write helper lists for downstream validation (httpx/zgrab)."""
@@ -455,7 +471,8 @@ def main():
     ap.add_argument("--bandwidth", default="10M",
                     help="ZMap bandwidth target (default: 10M).")
     ap.add_argument("--rate", type=int, default=0)
-    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--seed", type=int, default=1,
+                    help="Base seed for ZMap target permutation (default: 1).")
     ap.add_argument("--iface", "-i", default="",
                     help="Network interface (auto-detect if omitted on Linux/WSL).")
     ap.add_argument("--gateway-mac", "-G", default="")
@@ -534,10 +551,35 @@ def main():
                     help="Run only banner/report pipeline (no scan). Uses --pipeline-run-dir or data/scans/latest.")
     ap.add_argument("--pipeline-run-dir", default="",
                     help="Run directory for --pipeline-only (default: data/scans/latest).")
+    ap.add_argument("--zmap-heartbeat-sec", type=int, default=60,
+                    help="Print heartbeat while each ZMap pass runs (default: 60s, 0=off).")
+    ap.add_argument("--zmap-pass-timeout-sec", type=int, default=0,
+                    help="Hard timeout per ZMap pass in seconds (default: auto from estimate).")
+    ap.add_argument("--zmap-pass-timeout-factor", type=float, default=3.0,
+                    help="Auto-timeout multiplier on estimated pass duration (default: 3.0).")
+    ap.add_argument("--zmap-min-pass-timeout-sec", type=int, default=600,
+                    help="Minimum auto-timeout per pass in seconds (default: 600).")
+    ap.add_argument("--zmap-stall-timeout-sec", type=int, default=1800,
+                    help="Abort if output CSV stops growing this long after first growth (default: 1800, 0=off).")
     args = ap.parse_args()
 
     if args.passes < 1:
         print("[!] --passes must be >= 1")
+        return 2
+    if args.zmap_heartbeat_sec < 0:
+        print("[!] --zmap-heartbeat-sec must be >= 0")
+        return 2
+    if args.zmap_pass_timeout_sec < 0:
+        print("[!] --zmap-pass-timeout-sec must be >= 0")
+        return 2
+    if args.zmap_pass_timeout_factor <= 0:
+        print("[!] --zmap-pass-timeout-factor must be > 0")
+        return 2
+    if args.zmap_min_pass_timeout_sec < 0:
+        print("[!] --zmap-min-pass-timeout-sec must be >= 0")
+        return 2
+    if args.zmap_stall_timeout_sec < 0:
+        print("[!] --zmap-stall-timeout-sec must be >= 0")
         return 2
     if args.pipeline_only:
         base_dir = Path(args.pipeline_run_dir) if args.pipeline_run_dir else (OUT_ROOT / "latest")
@@ -604,6 +646,11 @@ def main():
         "seed": args.seed,
         "passes": args.passes,
         "seed_step": args.seed_step,
+        "zmap_heartbeat_sec": args.zmap_heartbeat_sec,
+        "zmap_pass_timeout_sec": args.zmap_pass_timeout_sec,
+        "zmap_pass_timeout_factor": args.zmap_pass_timeout_factor,
+        "zmap_min_pass_timeout_sec": args.zmap_min_pass_timeout_sec,
+        "zmap_stall_timeout_sec": args.zmap_stall_timeout_sec,
         "iface": args.iface,
         "gateway_mac": args.gateway_mac,
         "blacklist": blacklist_path,
@@ -637,6 +684,20 @@ def main():
     run_meta["targets_per_port_effective"] = total_targets_effective
 
     estimate_runtime(total_targets_effective, bw_mbps, ports_count=len(ports) * args.passes)
+    estimated_pass_seconds = estimate_runtime_seconds(total_targets_effective, bw_mbps, ports_count=1)
+    if args.zmap_pass_timeout_sec > 0:
+        pass_timeout_sec = args.zmap_pass_timeout_sec
+    else:
+        pass_timeout_sec = int(max(
+            args.zmap_min_pass_timeout_sec,
+            estimated_pass_seconds * args.zmap_pass_timeout_factor
+        ))
+    run_meta["zmap_pass_timeout_effective_sec"] = pass_timeout_sec
+    print(
+        f"[i] Watchdog: per-pass timeout={pass_timeout_sec}s, "
+        f"stall-timeout={'off' if args.zmap_stall_timeout_sec == 0 else str(args.zmap_stall_timeout_sec) + 's'}, "
+        f"heartbeat={'off' if args.zmap_heartbeat_sec == 0 else str(args.zmap_heartbeat_sec) + 's'}"
+    )
 
     run_id = now_utc().replace(":", "-")
     run_meta["run_id"] = run_id
@@ -730,8 +791,62 @@ def main():
             print(f"[i] Running ZMap on port {port} (pass {pass_no}/{args.passes}, seed={seed_for_pass}) ...")
 
             t0 = time.perf_counter()
+            timed_out_reason = ""
+            zmap_log_path = out_csv.with_suffix(out_csv.suffix + ".log")
             try:
-                cp = subprocess.run(cmd, text=True, capture_output=True)
+                with zmap_log_path.open("w", encoding="utf-8", errors="replace") as zlog:
+                    proc = subprocess.Popen(cmd, text=True, stdout=zlog, stderr=subprocess.STDOUT)
+                    last_heartbeat = t0
+                    last_growth = t0
+                    last_size = out_csv.stat().st_size if out_csv.exists() else 0
+                    saw_growth = last_size > 0
+                    rc = None
+
+                    while True:
+                        rc = proc.poll()
+                        now = time.perf_counter()
+
+                        # Track CSV growth continuously for stall detection.
+                        cur_size = out_csv.stat().st_size if out_csv.exists() else 0
+                        if cur_size > last_size:
+                            saw_growth = True
+                            last_growth = now
+                            last_size = cur_size
+
+                        if rc is not None:
+                            break
+
+                        elapsed = now - t0
+                        if pass_timeout_sec > 0 and elapsed > pass_timeout_sec:
+                            timed_out_reason = f"pass exceeded timeout ({pass_timeout_sec}s)"
+                        elif (
+                            args.zmap_stall_timeout_sec > 0
+                            and saw_growth
+                            and (now - last_growth) > args.zmap_stall_timeout_sec
+                        ):
+                            timed_out_reason = (
+                                f"no output growth for {args.zmap_stall_timeout_sec}s "
+                                f"(last csv size={last_size} bytes)"
+                            )
+
+                        if timed_out_reason:
+                            proc.terminate()
+                            try:
+                                proc.wait(timeout=10)
+                            except subprocess.TimeoutExpired:
+                                proc.kill()
+                                proc.wait(timeout=10)
+                            rc = proc.returncode if proc.returncode is not None else 124
+                            break
+
+                        if args.zmap_heartbeat_sec > 0 and (now - last_heartbeat) >= args.zmap_heartbeat_sec:
+                            print(
+                                f"[i] Port {port} pass {pass_no}/{args.passes} heartbeat | "
+                                f"elapsed={elapsed:.0f}s csv_bytes={cur_size:,}"
+                            )
+                            last_heartbeat = now
+
+                        time.sleep(1)
             except KeyboardInterrupt:
                 print("\n[!] Scan interrupted by user (Ctrl+C). Stopping gracefully.")
                 run_meta["finished_at"] = now_utc()
@@ -745,9 +860,21 @@ def main():
             t1 = time.perf_counter()
             pass_runtime = t1 - t0
             port_runtime_total += pass_runtime
-            if cp.returncode != 0:
-                err = (cp.stderr or cp.stdout or "").strip()
-                print(f"[!] ZMap feilet på port {port} pass {pass_no} (rc={cp.returncode}). Siste output:\n{err[-2000:]}")
+
+            if timed_out_reason:
+                err_tail = read_text_tail(zmap_log_path, max_chars=2000)
+                print(f"[!] ZMap aborted on port {port} pass {pass_no}: {timed_out_reason}")
+                if err_tail:
+                    print(f"[i] ZMap log tail ({zmap_log_path.name}):\n{err_tail}")
+                if fh:
+                    fh.close()
+                return 2
+
+            if rc != 0:
+                err_tail = read_text_tail(zmap_log_path, max_chars=2000)
+                print(f"[!] ZMap feilet på port {port} pass {pass_no} (rc={rc}).")
+                if err_tail:
+                    print(f"[i] ZMap log tail ({zmap_log_path.name}):\n{err_tail}")
                 if fh:
                     fh.close()
                 return 2
