@@ -1,9 +1,9 @@
 [Unit]
-Description=Run UiO non-web scanner every 6 hours
+Description=Run UiO non-web scanner every 8 hours
 
 [Timer]
 OnBootSec=10m
-OnUnitActiveSec=6h
+OnUnitActiveSec=8h
 Persistent=true
 RandomizedDelaySec=5m
 Unit=nonweb-scan.service

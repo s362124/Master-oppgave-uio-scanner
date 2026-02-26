@@ -37,5 +37,5 @@ This project includes:
 
 ## 4) Recommended cadence
 
-Default automation cadence in this repository is every 6 hours.
+Default automation cadence in this repository is every 8 hours.
 If full runs are very long, daily scheduling is also acceptable.
